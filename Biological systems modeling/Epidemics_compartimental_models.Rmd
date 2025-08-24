@@ -932,3 +932,4 @@ labs(x='Lambda values',y='R')
 
 
 
+
