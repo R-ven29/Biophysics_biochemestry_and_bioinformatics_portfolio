@@ -1,0 +1,366 @@
+---
+title: "Big Data in Biology. Practice 4."
+subtitle: 'Assingment in key concepts in experimental design'
+author: "Raquel Ventura Baños"
+date: "April 17, 2024"
+output: 
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: yes
+    number_sections: no
+    toc_float:
+      collapsed: no 
+      smooth_scroll: yes
+    toc_depth: 2
+    fig_width: 8
+    fig_height: 6
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,message=FALSE,warning=FALSE}
+
+    library(tidyverse)
+    #library(reshape2)
+    library(ggrepel)
+    library(cowplot)
+    library(edgeR)
+    library(limma)
+    library(Rtsne)
+    library(umap)
+    library(DESeq2)
+    library(readxl)
+    library(writexl)
+```
+
+```{r}
+setwd('C:/Users/raque/OneDrive/Documentos/Master/Big data/Big_Data_Practices_23_24/Practices/Practice_4')
+
+    reads=read.table("Analyses/Inputs/Processed_datasets/D1/Start_Practice4/reads.txt")
+    metadata=read.table("Analyses/Inputs/Processed_datasets/D1/Start_Practice4/metadata.txt")
+```
+
+
+## On dataset 1:
+
+```{r}
+treatments=unique(metadata$condition)
+populations=unique(metadata$population)
+dates=unique(metadata$library_date)
+
+df = expand.grid(treatments=treatments,populations=populations,dates=dates)
+
+df$samples=0
+for(i in 1:nrow(df))
+{
+  df$samples[i]=length(which(metadata$population==df$populations[i] & metadata$condition==df$treatments[i] &  metadata$library_date==df$dates[i]))
+}
+```
+
+```{r}
+
+    metadata$condition=factor(metadata$condition,levels=unique(metadata$condition))
+    dge <- DGEList(counts = reads)
+    dge <- calcNormFactors(dge)
+    design=model.matrix(~condition+library_date+population+condition*population,data=metadata)
+    v=voom(dge,design,plot=TRUE)
+    fit <-lmFit(v,design)
+    fit <- eBayes(fit)
+
+    betas=data.frame(fit$coefficients)
+    ts=data.frame(fit$t)
+    ps=data.frame(fit$p.value)
+    BF=data.frame(ps)
+    BH=data.frame(ps)
+    errors <- sqrt(fit$s2.post) * fit$stdev.unscaled
+
+    th=0.05
+    for(i in 1:ncol(BF))
+    {
+        BF[,i]=p.adjust(ps[,i],method="bonferroni")
+        BH[,i]=p.adjust(ps[,i],method="BH")
+        print(paste("i=",i,colnames(BF)[i],length(which(BF[,i]<th)),length(which(BH[,i]<th))))
+    }
+    
+    ## If we wanted to get the residuals matrix, we would do: 
+    ResidualsMatrix <- residuals(fit, v)
+    
+    ## Those pieces allow us to rebuild the expression matrix as follows:
+    
+    coefficients=as.matrix(t(betas))
+    mat_design=as.matrix(design)
+    mat_residuals=as.matrix(t(residuals(fit, v)))
+    exp_rebuilt= mat_design %*% coefficients + mat_residuals
+    exp_rebuilt=t(exp_rebuilt)
+    
+    ## Check results.
+    exp_rebuilt[1:5,1:5]
+    v$E[1:5,1:5]
+    
+    ## Are essentially the same.
+    max(abs(v$E-exp_rebuilt))
+```
+
++ Use the function contrasts.fit whenever needed in order to estimate, for the model ran above, coefficients, or linear combinations of coefficients, capturing along with their p values:
+
+```{r}
+colnames(fit$coefficients)
+```
+
+
+- The effect of population in NS samples.
+
+```{r}
+fit1 <- contrasts.fit(fit, coefficients='populationEUB')
+```
+
+- The effect of population on (for example) LPS samples.
+
+```{r}
+fit2 <- contrasts.fit(fit, coefficients='conditionLPS:populationEUB')
+```
+
+- The effect of LPS on AF individuals.
+
+```{r}
+fit3 <- contrasts.fit(fit, coefficients='conditionLPS')
+```
+
+- The effect of LPS on EU individuals.
+
+```{r}
+fit4 <- contrasts.fit(fit, contrasts=c(0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0))
+```
+
+- The population x LPS treatment interaction.
+
+```{r}
+fit5<-fit2
+```
+
+- The difference between LPS and PAM3CSK4 effects on EU individuals.
+
+```{r}
+fit6 <- contrasts.fit(fit, contrasts=c(0,-1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,0,1,0))
+```
+
+Then, run an alternative model to the one presented above, where the effect of condition is modeled nested in each population, and capture the same effects, that now will be parametrized differently (they will be retrieved from different linear combinations of the parameters as explained in theory). Compare each of the five calculated effects, across models.
+
+```{r}
+    design_alt=model.matrix(~library_date+population+condition:population,data=metadata)
+    v_alt=voom(dge,design_alt,plot=TRUE)
+    fit_alt <-lmFit(v_alt,design_alt)
+    fit_alt <- eBayes(fit_alt)
+
+    betas=data.frame(fit_alt$coefficients)
+    ts=data.frame(fit_alt$t)
+    ps=data.frame(fit_alt$p.value)
+    BF=data.frame(ps)
+    BH=data.frame(ps)
+    errors <- sqrt(fit_alt$s2.post) * fit_alt$stdev.unscaled
+
+    th=0.05
+    for(i in 1:ncol(BF))
+    {
+        BF[,i]=p.adjust(ps[,i],method="bonferroni")
+        BH[,i]=p.adjust(ps[,i],method="BH")
+        print(paste("i=",i,colnames(BF)[i],length(which(BF[,i]<th)),length(which(BH[,i]<th))))
+    }
+    
+    ## If we wanted to get the residuals matrix, we would do: 
+    ResidualsMatrix <- residuals(fit_alt, v)
+    
+    ## Those pieces allow us to rebuild the expression matrix as follows:
+    
+    coefficients=as.matrix(t(betas))
+    mat_design=as.matrix(design)
+    mat_residuals=as.matrix(t(residuals(fit_alt, v)))
+    exp_rebuilt= mat_design %*% coefficients + mat_residuals
+    exp_rebuilt=t(exp_rebuilt)
+    
+    ## Check results.
+    exp_rebuilt[1:5,1:5]
+    v$E[1:5,1:5]
+    
+    ## Are essentially the same.
+    max(abs(v$E-exp_rebuilt))
+```
+```{r}
+colnames(fit_alt$coefficients)
+```
+
+
+- The effect of population in NS samples.
+
+```{r}
+fit_alt1 <- contrasts.fit(fit_alt, coefficients='populationEUB')
+```
+
+- The effect of population on (for example) LPS samples.
+
+```{r}
+fit_alt2 <- contrasts.fit(fit_alt, contrasts=c(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,1,0,0))
+```
+
+- The effect of LPS on AF individuals.
+
+```{r}
+fit_alt3 <- contrasts.fit(fit_alt, coefficients='populationAFB:conditionLPS')
+```
+
+- The effect of LPS on EU individuals.
+
+```{r}
+fit_alt4 <- contrasts.fit(fit_alt, coefficients='populationEUB:conditionLPS')
+```
+
+- The population x LPS treatment interaction.
+
+```{r}
+fit_alt5<-fit_alt2
+```
+
+- The difference between LPS and PAM3CSK4 effects on EU individuals.
+
+```{r}
+fit_alt6 <- contrasts.fit(fit_alt, contrasts=c(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,0,0,0,0,1,0,0))
+```
+
+## On dataset 3:
+
++ As you may noticed in the `metadata_extended` file that we are now loading for metadata of dataset 3, there is an extra column, which includes an hypothetical batch effect (e.g. a batch date) that you may have to include in the model. Can you incorporate it seamlessly to the design and apply a factorial modeling approach the same we did for dataset 1 above? 
+
+```{r}
+meta=read.table("Analyses/Inputs/Processed_datasets/D3/Start_Practice3/meta_data_extended.txt")
+counts=read.table("Analyses/Inputs/Processed_datasets/D3/Start_Practice3/reads.txt")
+
+combos=paste0(meta$species,"_",meta$tissue)
+length(unique(combos))
+dim(meta)
+colnames(meta)
+```
+
+```{r}
+    dge <- DGEList(counts = counts)
+    dge <- calcNormFactors(dge)
+    design=model.matrix(~tissue+species+batch,data=meta)
+    dim(design)
+    ## As you see here, this would imply estimating 26 coefficients: a map 1:1 
+    data.frame(colnames(design))
+    
+    v=voom(dge,design,plot=TRUE)
+    fit <-lmFit(v,design)
+    ## This would throw an error: fit <- eBayes(fit)
+    res=residuals(fit,v)
+    
+    ## residuals are null:
+    max(abs(res))
+```
+
+To answer that question, produce a plot where you see how the samples from mice and humans are distributed across batch levels, and discuss the results.
+
+```{r}
+tissue=unique(meta$tissue)
+batch=unique(meta$batch[meta$species=='human'])
+
+df = expand.grid(tissue=tissue,batch=batch)
+
+df$samples=0
+for(i in 1:nrow(df))
+{
+  df$samples[i]=length(which(meta$tissue==df$tissue[i] &  meta$batch==df$batch[i]))
+}
+
+pl_pop_h =ggplot(data=df, aes(y=samples, fill=tissue, x=batch))+
+  geom_bar(position="stack", stat="identity")+
+  coord_flip()+
+  theme(legend.position="top")+
+  ggtitle('HUMAN')
+```
+
+```{r}
+tissue=unique(meta$tissue)
+batch=unique(meta$batch[meta$species=='mouse'])
+
+df = expand.grid(tissue=tissue,batch=batch)
+
+df$samples=0
+for(i in 1:nrow(df))
+{
+  df$samples[i]=length(which(meta$tissue==df$tissue[i] &  meta$batch==df$batch[i]))
+}
+
+pl_pop_m =ggplot(data=df, aes(y=samples, fill=tissue, x=batch))+
+  geom_bar(position="stack", stat="identity")+
+  coord_flip()+
+  theme(legend.position="top")+
+  ggtitle('MOUSE')
+```
+
+```{r, fig.width=12}
+gridExtra::grid.arrange(pl_pop_h,pl_pop_m,nrow=1)
+```
+Batch effects have different nature but are equally common in both mouse and human samples. Almost A and B batch effects are equally highly present in human as they are D and C in mouse, E batch effect is equally present and distributed in both species. Affected batches are different for each species.
+
++ If species are disproportionately represented in some of the batch levels (which is obviously the case), you will need to deal with it. To inspect the impact of this batch on the species signal, compare two models, each of which with the following designs:
+
+```{r}
+design_wout_batch=model.matrix(~tissue+species,data=meta)
+dim(design_wout_batch)
+    ## As you see here, this would imply estimating 26 coefficients: a map 1:1 
+    data.frame(colnames(design_wout_batch))
+    
+    v_wout=voom(dge,design_wout_batch,plot=TRUE)
+    fit_wout <-lmFit(v_wout,design_wout_batch)
+    ## This would throw an error: fit <- eBayes(fit)
+    res=residuals(fit_wout,v_wout)
+    
+    ## residuals are null:
+    max(abs(res))
+```
+
+how many DEGs do you see when you use the `design_w_batch``? What is your interpretation of these results?
+
+```{r}
+fit <- eBayes(fit)
+fit_wout <- eBayes(fit_wout)
+```
+
+```{r}
+species_v1=topTable(fit_wout,"speciesmouse",number=nrow(reads))
+length(which(species_v1$adj.P.Val<0.05))
+  
+species_v2=topTable(fit,"speciesmouse",number=nrow(reads))
+length(which(species_v2$adj.P.Val<0.05))
+```
+Since affected lots are different for each species, the design with batch effects present very low DEGs in common for both species and noticing the difference between DEGs for models with and without batch effects, the main contribution to the DEGs differences between species are batch effects.
+
++ To complete the picture of the interpretation, repeat the hierarchical clustering done in previous practices on this dataset, but do it on the residual matrix obtained from a design where only the effects of batch have been modeled:
+
+```{r}
+dge <- DGEList(counts = counts)
+    dge <- calcNormFactors(dge)
+design_only_batch=model.matrix(~batch,data=meta)
+dim(design_only_batch)
+## As you see here, this would imply estimating 26 coefficients: a map 1:1 
+data.frame(colnames(design_only_batch))
+
+v_only=voom(dge,design_only_batch,plot=TRUE)
+
+only_fit <- lmFit(v_only,design_only_batch)
+only_fit <- eBayes(only_fit)
+
+residuals <- residuals(only_fit, v_only)
+
+clusters <- hclust(dist(t(residuals)))
+clusterCut <- cutree(clusters, 3)
+
+clusterCut
+plot(clusters)
+```
+
+This clustering shows a correlation for residuals of same tissues and different species, which is what the batch variable can't explain in the only_batch model. Knowing that DEGs for the model with batch effects are fewer than the one without, we can conclude that batch effects are contaminating the samples across species and making the set unreliable. This correlation between tissues of different species is only achieved by selecting those genes that are differentially expressed taking account batch effects. Conclusions among different species within this data set can't be reached since the amount of DGEs selected taking account these effects is significantly low compared to the general one.

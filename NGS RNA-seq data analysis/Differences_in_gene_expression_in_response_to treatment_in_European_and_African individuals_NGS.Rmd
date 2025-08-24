@@ -1,0 +1,506 @@
+---
+title: "Understandig differences in  gene expression in response to treatment in European and African individuals based in the sutudy: http://dx.doi.org/10.1016/j.cell.2016.09.024"
+subtitle: "Practical Assingment"
+author: "Raquel Ventura Baños"
+date: "May 21, 2024"
+output: 
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: yes
+    number_sections: yes
+    toc_float:
+      collapsed: no 
+      smooth_scroll: yes
+    toc_depth: 4
+    fig_width: 8
+    fig_height: 6
+    fig_caption: true
+---
+
+# Methodology
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r, tidy=TRUE}
+library(tidyverse)
+library(ggrepel)
+library(edgeR)
+library(limma)
+library(biomaRt)
+library(fgsea)
+```
+
+
+## Loading the dataset and obtaining the model.
+
+```{r}
+reads=read.table("Analyses/Inputs/Processed_datasets/D1/Start_Practice4/reads.txt")
+metadata=read.table("Analyses/Inputs/Processed_datasets/D1/Start_Practice4/metadata.txt")
+feature_data=read.table("Analyses/Inputs/Processed_datasets/D1/Start_Practice4/featuredata.txt")
+```
+
+I used a interaction model in which batch (library date), population and condition terms are included as well as the interaction between condition and population. The interaction will give the information to work with since the response expression differences among populations (up/down regulated for a given population in response to each tratment) for each treatment will reveal the differences in response among these two groups. Thresholds chosen for logFC and Fdr are 0.05 since I didn't want to be restrictive in the selection of differentially expressed genes for both groups will be severely altered if higher thresholds of logFC are proposed and will lose significance if false discovery rate cut was lower than 0.05. 
+
+```{r}
+metadata$condition=factor(metadata$condition,levels=unique(metadata$condition))
+metadata$population=factor(metadata$population,levels=c("EUB","AFB"))
+dge <- DGEList(counts = reads)
+dge <- calcNormFactors(dge)
+design=model.matrix(~condition+library_date+population+condition*population,data=metadata)
+v=voom(dge,design,plot=TRUE)
+```
+
+```{r}
+fit <-lmFit(v,design)
+fit <- eBayes(fit)
+```
+
+```{r}
+colnames(fit)
+```
+
+```{r}
+betas=data.frame(fit$coefficients)
+ts=data.frame(fit$t)
+ps=data.frame(fit$p.value)
+BH=data.frame(ps)
+
+dif_AF_PAM=data.frame(logFC=betas$conditionPAM3CSK4.populationAFB, t=ts$conditionPAM3CSK4.populationAFB, Fdr=BH$conditionPAM3CSK4.populationAFB)
+rownames(dif_AF_PAM)<-rownames(betas[betas$conditionPAM3CSK4.populationAFB==TRUE])
+
+dif_AF_R848=data.frame(logFC=betas$conditionR848.populationAFB, t=ts$conditionR848.populationAFB, Fdr=BH$conditionR848.populationAFB)
+rownames(dif_AF_R848)<-rownames(betas[betas$conditionR848.populationAFB==TRUE])
+                       
+dif_AF_LPS=data.frame(logFC=betas$conditionLPS.populationAFB,t=ts$conditionLPS.populationAFB,Fdr=BH$conditionLPS.populationAFB)
+rownames(dif_AF_LPS)<-rownames(betas[betas$conditionLPS.populationAFB==TRUE])
+
+dif_AF_IAV=data.frame(logFC=betas$conditionIAV.populationAFB,t=ts$conditionIAV.populationAFB,Fdr=BH$conditionIAV.populationAF)
+rownames(dif_AF_IAV)<-rownames(betas[betas$conditionIAV.populationAFB==TRUE])
+```
+
+```{r}
+threshold=0.05
+th_FC=0.05
+
+dif_AF_PAM$DE="No"
+dif_AF_PAM$DE[which(dif_AF_PAM$Fdr<threshold & abs(dif_AF_PAM$logFC)>th_FC)]="Yes"
+hits_PAM=length(which(dif_AF_PAM$Fdr<threshold & abs(dif_AF_PAM$logFC)>th_FC))
+volcano_PAM=ggplot(dif_AF_PAM)+geom_point(aes(x=logFC,y=-log10(Fdr),color=DE),size=0.5)+
+  scale_colour_manual(values = c("grey20", "firebrick4"))+ggtitle(paste0("AF effects in PAM response:  ",hits_PAM, " DEGs"))+
+  geom_hline(yintercept=-log10(threshold)) + 
+  geom_vline(xintercept=c(th_FC,-th_FC))
+
+dif_AF_R848$DE="No"
+dif_AF_R848$DE[which(dif_AF_R848$Fdr<threshold & abs(dif_AF_R848$logFC)>th_FC)]="Yes"
+hits_R848=length(which(dif_AF_R848$Fdr<threshold & abs(dif_AF_R848$logFC)>th_FC))
+volcano_R848=ggplot(dif_AF_R848)+geom_point(aes(x=logFC,y=-log10(Fdr),color=DE),size=0.5)+
+  scale_colour_manual(values = c("grey20", "firebrick4"))+ggtitle(paste0("AF effects in R848 response:  ",hits_R848, " DEGs"))+
+  geom_hline(yintercept=-log10(threshold)) +     
+  geom_vline(xintercept=c(th_FC,-th_FC))
+
+dif_AF_LPS$DE="No"
+dif_AF_LPS$DE[which(dif_AF_LPS$Fdr<threshold & abs(dif_AF_LPS$logFC)>th_FC)]="Yes"
+hits_LPS=length(which(dif_AF_LPS$Fdr<threshold & abs(dif_AF_LPS$logFC)>th_FC))
+volcano_LPS=ggplot(dif_AF_LPS)+geom_point(aes(x=logFC,y=-log10(Fdr),color=DE),size=0.5)+
+  scale_colour_manual(values = c("grey20", "firebrick4"))+ggtitle(paste0("AF effects in LPS response:  ",hits_LPS, " DEGs"))+
+  geom_hline(yintercept=-log10(threshold)) + 
+  geom_vline(xintercept=c(th_FC,-th_FC))
+
+dif_AF_IAV$DE="No"
+dif_AF_IAV$DE[which(dif_AF_IAV$Fdr<threshold & abs(dif_AF_IAV$logFC)>th_FC)]="Yes"
+hits_IAV=length(which(dif_AF_IAV$Fdr<threshold & abs(dif_AF_IAV$logFC)>th_FC))
+volcano_IAV=ggplot(dif_AF_IAV)+geom_point(aes(x=logFC,y=-log10(Fdr),color=DE),size=0.5)+
+  scale_colour_manual(values = c("grey20", "firebrick4"))+ggtitle(paste0("AF effects in IAV response:  ",hits_IAV, " DEGs"))+
+  geom_hline(yintercept=-log10(threshold)) + 
+  geom_vline(xintercept=c(th_FC,-th_FC))
+```
+
+```{r, fig.width=12, fig.height=10}
+gridExtra::grid.arrange(grobs=list(volcano_PAM, volcano_R848, volcano_LPS, volcano_IAV), nrows=2)
+```
+
+ + Finally, the chosen genes for the enrichment analysis will be those that surpass the thresholds selected for differential expression
+
+```{r}
+d_AF_PAM <- data.frame(dif_AF_PAM[dif_AF_PAM$DE=="Yes",])
+d_AF_R84 <- data.frame(dif_AF_R848[dif_AF_R848$DE=="Yes",] )
+d_AF_LPS <- data.frame(dif_AF_LPS[dif_AF_LPS$DE=="Yes",])
+d_AF_IAV <- data.frame(dif_AF_IAV[dif_AF_IAV$DE=="Yes",])
+```
+
+## Defining the clusters of genes we're going to analyze.
+
+I defined a number of 6 clusters to obtain up to 3 levels of expression in each up and down regulated genes for each treatment. I'll be obtaining groups of differential expression in terms of logFC for further analysis. Results are ploted in a volcano plot where only first selected differentially expressed genes are plotted and divided in groups using different colors for each cluster.
+
+```{r}
+clusters_PAM_AF <- hclust(dist(d_AF_PAM$logFC))
+clusters_R84_AF <- hclust(dist(d_AF_R84$logFC))
+clusters_LPS_AF <- hclust(dist(d_AF_LPS$logFC))
+clusters_IAV_AF <- hclust(dist(d_AF_IAV$logFC))
+```
+
+```{r}
+clusters_PAM_AF_cut <- cutree(clusters_PAM_AF,k=6)
+clusters_R84_AF_cut <- cutree(clusters_R84_AF,k=6)
+clusters_LPS_AF_cut <- cutree(clusters_LPS_AF,k=6)
+clusters_IAV_AF_cut <- cutree(clusters_IAV_AF,k=6)
+
+d_AF_PAM$clusters = as.factor(clusters_PAM_AF_cut)
+d_AF_R84$clusters = as.factor(clusters_R84_AF_cut)
+d_AF_LPS$clusters = as.factor(clusters_LPS_AF_cut)
+d_AF_IAV$clusters = as.factor(clusters_IAV_AF_cut)
+```
+
+```{r}
+v_PAM = ggplot(d_AF_PAM)+geom_point(aes(x=logFC,y=-log(Fdr),col=clusters)) +
+  scale_color_manual(values=c("#DC143C", "#708090", "#A0522D", "#CD5C5C", "#696969", "#BC8F8F")) +
+  ggtitle('PAM3CSK4 treatment response for AF population interaction')
+
+v_R848 = ggplot(d_AF_R84)+geom_point(aes(x=logFC,y=-log(Fdr),col=clusters)) +
+  scale_color_manual(values=c("#DC143C", "#708090", "#A0522D", "#CD5C5C", "#696969", "#BC8F8F")) +
+  ggtitle('R848 treatment response for AF population interaction')
+  
+v_LPS = ggplot(d_AF_LPS)+geom_point(aes(x=logFC,y=-log(Fdr),col=clusters)) +
+  scale_color_manual(values=c("#DC143C", "#708090", "#A0522D", "#CD5C5C", "#696969", "#BC8F8F")) +
+  ggtitle('LPS treatment response for AF population interaction')
+
+v_IAV = ggplot(d_AF_IAV)+geom_point(aes(x=logFC,y=-log(Fdr),col=clusters)) +
+  scale_color_manual(values=c("#DC143C", "#708090", "#A0522D", "#CD5C5C", "#696969", "#BC8F8F")) +
+  ggtitle('IAV treatment response for AF population interaction')
+```
+
+```{r, fig.width=12, fig.height=10}
+gridExtra::grid.arrange(grobs=list(v_PAM, v_R848, v_LPS, v_IAV), ncol=2)
+```
+
+## Gene ontology enrichment 
+
+```{r, tidy=TRUE}
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(AnnotationDbi)
+```
+
+A gene ontology enrichment is performed for each cluster in order to know the prevalent functions gene clusters are involved in. The threshold for maximal p-value used in this method is 0.05 in order to obtain as much information as possible without compromising significance. I created a function to reduce the amount of code needed to save results in the corresponding data frame.
+
+```{r}
+GO_enrich <- function(cluster,d_cond_data.frame,dif_cond_data.frame){
+  
+  rownames(d_cond_data.frame)=rownames(dif_cond_data.frame[dif_cond_data.frame$DE=="Yes",])
+  
+  enrichGO(
+                gene          = rownames(d_cond_data.frame)[which(d_cond_data.frame$cluster==cluster)],
+                universe      = rownames(d_cond_data.frame),
+                keyType       = 'ENSEMBL',
+                OrgDb         = org.Hs.eg.db,
+                ont           = "BP",
+                pAdjustMethod = "BH",
+                pvalueCutoff = 0.05)
+}
+```
+
+```{r}
+GO_1_PAM <- GO_enrich(1,d_AF_PAM, dif_AF_PAM)
+GO_2_PAM <- GO_enrich(2,d_AF_PAM, dif_AF_PAM)
+GO_3_PAM <- GO_enrich(3,d_AF_PAM, dif_AF_PAM)
+GO_4_PAM <- GO_enrich(4,d_AF_PAM, dif_AF_PAM)
+GO_5_PAM <- GO_enrich(5,d_AF_PAM, dif_AF_PAM)
+GO_6_PAM <- GO_enrich(6,d_AF_PAM, dif_AF_PAM)
+```
+
+```{r}
+GO_1_R848 <- GO_enrich(1,d_AF_R84, dif_AF_R848)
+GO_2_R848 <- GO_enrich(2,d_AF_R84, dif_AF_R848)
+GO_3_R848 <- GO_enrich(3,d_AF_R84, dif_AF_R848)
+GO_4_R848 <- GO_enrich(4,d_AF_R84, dif_AF_R848)
+GO_5_R848 <- GO_enrich(5,d_AF_R84, dif_AF_R848)
+GO_6_R848 <- GO_enrich(6,d_AF_R84, dif_AF_R848)
+```
+
+```{r}
+GO_1_LPS <- GO_enrich(1,d_AF_LPS, dif_AF_LPS)
+GO_2_LPS <- GO_enrich(2,d_AF_LPS, dif_AF_LPS)
+GO_3_LPS <- GO_enrich(3,d_AF_LPS, dif_AF_LPS)
+GO_4_LPS <- GO_enrich(4,d_AF_LPS, dif_AF_LPS)
+GO_5_LPS <- GO_enrich(5,d_AF_LPS, dif_AF_LPS)
+GO_6_LPS <- GO_enrich(6,d_AF_LPS, dif_AF_LPS)
+```
+
+```{r}
+GO_1_IAV <- GO_enrich(1,d_AF_IAV, dif_AF_IAV)
+GO_2_IAV <- GO_enrich(2,d_AF_IAV, dif_AF_IAV)
+GO_3_IAV <- GO_enrich(3,d_AF_IAV, dif_AF_IAV)
+GO_4_IAV <- GO_enrich(4,d_AF_IAV, dif_AF_IAV)
+GO_5_IAV <- GO_enrich(5,d_AF_IAV, dif_AF_IAV)
+GO_6_IAV <- GO_enrich(6,d_AF_IAV, dif_AF_IAV)
+```
+
+
+### Anlyzing results from GO enrichment.
+
+To visualize results I retrieved the lists of those clusters enrichment in which the function of the genes in the cluster is clear and those with no significant GO enrichment. I will use 'goplot' tool to visualize clearly the enrichment in the rest of the clusters and arrive to a conclusion based on p-values and the relation between terms (nodes in the graph).
+
+```{r}
+library("enrichplot")
+library("ggnewscale")
+```
+
+#### For Pam3CSK4 treatment (activation of toll-like receptor 1).
+
+```{r}
+#GO_1_PAM$Description
+#GO_2_PAM$Description
+#GO_3_PAM$Description
+#GO_4_PAM$Description
+#GO_5_PAM$Description
+#GO_6_PAM$Description
+```
+
+```{r, fig.width=14, fig.height=12}
+goplot(GO_1_PAM, showCategory = 10)
+```
+
+For the first cluster selected, the differences in gene expression between populations in response to Pam3CSK4 treatment is related to **RNA processing-ribosome biogenesis and translation/peptide synthesis**, related to every three main categories of gene ontology BP, CC and MF (biological processes, cellular components and molecular function).
+
+```{r, fig.width=14, fig.height=12}
+goplot(GO_2_PAM, showCategory = 10)
+```
+
+For the second cluster selected, the differences in gene expression between populations in response to Pam3CSK4 treatment is related to **positive regulation of calcium ion transport* -> *lipogenic gene expression* -> *endocytosis and membrane transport related terms* and *cell morphogenesis** all related to one of main categories of gene ontology, BP (biological processes).
+
+```{r, fig.width=10, fig.height=10}
+goplot(GO_3_PAM, showCategory = 10)
+```
+For the third cluster selected, the differences in gene expression between populations in response to Pam3CSK4 treatment is related to **immune response and defense/response to other organisms**.
+
+```{r, fig.width=12, fig.height=12}
+goplot(GO_4_PAM, showCategory = 10)
+```
+
+For the fourth cluster selected, the differences in gene expression between populations in response to Pam3CSK4 treatment is related to **cell migration, regulation of blood coagulation and cell proliferation**.
+
+```{r, fig.width=12, fig.height=12}
+goplot(GO_5_PAM, showCategory = 4)
+```
+
+For the fourth cluster selected, the differences in gene expression between populations in response to Pam3CSK4 treatment is related to **protein modification:peptidyl-tyrosine phosphorylation and myeloid cell differentiation**.
+
+```{r, fig.width=10, fig.height=10}
+goplot(GO_6_PAM, showCategory = 10)
+```
+In the cluster 6 for the Pam3CSK4 condition we encounter response related to the positive regulation of **inflammatory response and blood circulation**.
+
+#### For R848 treatment (TLR-7/8 agonist)
+
+```{r}
+#GO_1_R848$Description
+#GO_2_R848$Description
+```
+
+```{r}
+#GO_3_R848$Description
+GO_4_R848$Description
+GO_5_R848$Description
+GO_6_R848$Description
+```
+For cluster 4, 5 and 6 in R848 treatment interaction term we don't find any significant ontology terms.
+
+```{r}
+goplot(GO_1_R848, showCategory = 5)
+```
+For the first cluster of R848 condition interaction term we find differences in response to treatment related to the expression of genes which regulate **lipid metabolic processes** and specially **catabolic** processes.
+
+```{r, fig.width=14, fig.height=12}
+goplot(GO_2_R848, showCategory = 5)
+```
+
+For the second cluster of R848 condition interaction term we find differences in response to treatment related to the expression of genes which regulate **translation**.
+
+```{r}
+goplot(GO_3_R848, showCategory = 10)
+```
+For the first cluster of R848 we find differences in response to treatment related to the expression of genes which regulate **a large number of processes involved in immune response and response to other organisms**.
+
+#### For LPS response (TLR-4 agonist)
+
+```{r}
+#GO_1_LPS$Description
+#GO_2_LPS$Description
+#GO_3_LPS$Description
+#GO_4_LPS$Description
+GO_5_LPS$Description
+#GO_6_LPS$Description
+```
+For cluster 5 we find a clear term for gene ontology differentially expressed for populations in response to the treatment related to **acute inflammatory response**.
+
+```{r, fig.width=14, fig.height=12}
+goplot(GO_1_LPS, showCategory = 5)
+```
+
+For the first cluster the genes that are differentially expressed for each population in response to the treatment are those involved in **ribosomal RNA and non-coding RNA metabolic processes**.
+
+```{r, fig.width=14, fig.height=12}
+goplot(GO_2_LPS, showCategory = 5)
+```
+
+For the second cluster, the genes that are differentially expressed for each population in response to the treatment are those involved in **cytokine production and regulation of the immune response**.
+
+```{r, fig.width=9, fig.height=9}
+goplot(GO_3_LPS, showCategory = 5)
+```
+
+For the third cluster, the genes that are differentially expressed for each population in response to the treatment are those involved in **response to viruses and other organisms and biotic stimulus**.
+
+```{r, fig.width=10, fig.height=10}
+goplot(GO_4_LPS, showCategory = 5)
+```
+For the fourth cluster, the genes that are differentially expressed for each population in response to the treatment are those involved in **chemokine-mediated signalling pathway and humoral immune response**
+
+```{r, fig.width=14, fig.height=14}
+goplot(GO_6_LPS, showCategory = 5)
+```
+
+For the sixth cluster, the genes that are differentially expressed for each population in response to the treatment are those involved in **platelet activation, blood coagulation and cellular extravasation** also in the **adhesion of leukocytes into endotelial cells and megacariocytes differentiation**.
+
+#### For IAV (influenza A virus) treatment
+
+```{r}
+#GO_1_IAV$Description
+#GO_2_IAV$Description
+#GO_3_IAV$Description
+#GO_4_IAV$Description
+#GO_5_IAV$Description
+GO_6_IAV$Description
+```
+For the sixth cluster, the genes that are differentially expressed for each population in response to the treatment are those involved in **G protein-coupled receptor signaling pathway**.
+
+```{r, fig.width=14, fig.height=12}
+goplot(GO_1_IAV, showCategory = 5)
+```
+For the first cluster, the genes that are differentially expressed for each population in response to the treatment are those involved in **ubiquitin-dependent protein catabolic pathway, protein postraslational modification and endomembrane system organization**.
+
+```{r, fig.width=14, fig.height=12}
+goplot(GO_2_IAV, showCategory = 5)
+```
+
+For the second cluster, the genes that are differentially expressed for each population in response to the treatment are those involved in **translation and mitochondrial ATP synthesis coupled electron transport**.
+
+```{r, fig.width=14, fig.height=12}
+goplot(GO_3_IAV, showCategory = 5)
+```
+
+For the third cluster, the genes that are differentially expressed for each population in response to the treatment are those involved in **cellular response to cytokine stimulus, immune response and response to other organisms**.
+
+```{r, fig.width=14, fig.height=12}
+goplot(GO_4_IAV, showCategory = 5)
+```
+
+For the third cluster, the genes that are differentially expressed for each population in response to the treatment are those involved in **interleukin-6 production (related to cytokine production) and humoral immune response**.
+
+```{r, fig.width=10, fig.height=10}
+goplot(GO_5_IAV, showCategory = 5)
+```
+
+For the third cluster, the genes that are differentially expressed for each population in response to the treatment are those involved in **plasma lipoprotein assembly, cell activation and regulation of immune system process**.
+
+# Discussion.
+
+First, I'll be adding a column with GO terms conclusions in the gene expression data set to plot the figure panel:
+
+```{r}
+d_AF_PAM$terms[d_AF_PAM$clusters==1] <- "RNA processing, ribosome biogenesis and translation/peptide synthesis"
+d_AF_PAM$terms[d_AF_PAM$clusters==2] <- "positive regulation of calcium ion transport -> lipogenic gene expression -> endocytosis and cell morphogenesis"
+d_AF_PAM$terms[d_AF_PAM$clusters==3] <- "immune response and defense/response to other organisms"
+d_AF_PAM$terms[d_AF_PAM$clusters==4] <- "cell migration, regulation of blood coagulation and cell proliferation"
+d_AF_PAM$terms[d_AF_PAM$clusters==5] <- "protein modification: peptidyl-tyrosine phosphorylation and myeloid cell differentiation"
+d_AF_PAM$terms[d_AF_PAM$clusters==6] <- "inflamatory response and blood circulation"
+```
+
+```{r}
+d_AF_R84$terms[d_AF_R84$clusters==1] <- "lipid metabolic processes (catabolic more significantly)"
+d_AF_R84$terms[d_AF_R84$clusters==2] <- "translation"
+d_AF_R84$terms[d_AF_R84$clusters==3] <- "immune response and response to other organisms"
+d_AF_R84$terms[d_AF_R84$clusters==4] <- "no significant GO enrichment terms"
+d_AF_R84$terms[d_AF_R84$clusters==5] <- "no significant GO enrichment terms"
+d_AF_R84$terms[d_AF_R84$clusters==6] <- "no significant GO enrichment terms"
+```
+
+```{r}
+d_AF_LPS$terms[d_AF_LPS$clusters==1] <- "ribosomal RNA and non-coding RNA metabolic processes"
+d_AF_LPS$terms[d_AF_LPS$clusters==2] <- "cytokine production and regulation of the immune response"
+d_AF_LPS$terms[d_AF_LPS$clusters==3] <- "response to viruses and other organisms and biotic stimulus"
+d_AF_LPS$terms[d_AF_LPS$clusters==4] <- "chemokine-mediated signalling pathway and humoral immune response"
+d_AF_LPS$terms[d_AF_LPS$clusters==5] <- "acute inflammatory response"
+d_AF_LPS$terms[d_AF_LPS$clusters==6] <- "platelet activation, blood coagulation and cellular extravasation, adhesion of leukocytes into endotelial cells and megacariocytes diff."
+```
+
+```{r}
+d_AF_IAV$terms[d_AF_IAV$clusters==1] <- "ubiquitin-dependent protein catabolic pathway, protein postraslational modification and endomembrane system organization"
+d_AF_IAV$terms[d_AF_IAV$clusters==2] <- "translation and mitochondrial ATP synthesis coupled electron transport"
+d_AF_IAV$terms[d_AF_IAV$clusters==3] <- "cellular response to cytokine stimulus, immune response and response to other organisms"
+d_AF_IAV$terms[d_AF_IAV$clusters==4] <- "interleukin-6 production (related to cytokine production) and humoral immune response"
+d_AF_IAV$terms[d_AF_IAV$clusters==5] <- "plasma lipoprotein assembly, cell activation and regulation of immune system process"
+d_AF_IAV$terms[d_AF_IAV$clusters==6] <- "G protein-coupled receptor signaling pathway"
+```
+
+
+```{r}
+v_PAM_t = ggplot(d_AF_PAM) + geom_point(aes(x=logFC,y=-log(Fdr),col=terms), size=2) +
+  scale_color_manual(values=c("#696969", "#BC8F8F", "#DC143C", "#A0522D", "#CD5C5C", "#3B83BD")) + 
+  ggtitle('PAM3CSK4 treatment response differences for each population') +
+  theme(legend.text = element_text(size = 14), plot.title = element_text(size=15))
+
+v_R848_t = ggplot(d_AF_R84)+geom_point(aes(x=logFC,y=-log(Fdr),col=terms), size=2) +
+  scale_color_manual(values=c("#696969", "#BC8F8F", "#DC143C", "#A0522D", "#CD5C5C", "#3B83BD")) +
+  ggtitle('R848 treatment response differences for each population') +
+  theme(legend.text = element_text(size = 14),  plot.title = element_text(size=15))
+  
+v_LPS_t = ggplot(d_AF_LPS)+geom_point(aes(x=logFC,y=-log(Fdr),col=terms), size=2) +
+  scale_color_manual(values=c("#696969", "#BC8F8F", "#DC143C", "#A0522D", "#CD5C5C", "#3B83BD")) +
+  ggtitle('LPS treatment response differences for eachpopulation') +
+  theme(legend.text = element_text(size = 13),  plot.title = element_text(size=15))
+
+v_IAV_t = ggplot(d_AF_IAV)+geom_point(aes(x=logFC,y=-log(Fdr),col=terms), size=2) +
+  scale_color_manual(values=c("#696969", "#BC8F8F", "#DC143C", "#A0522D", "#CD5C5C", "#3B83BD")) +
+  ggtitle('IAV treatment response differences for each population') +
+  theme(legend.text = element_text(size = 14),  plot.title = element_text(size=15))
+
+```
+
+```{r, fig.width=20, fig.height=20}
+library(grid)
+library(gridExtra)
+
+title <- textGrob("Differencies in gene expression as a response to treatment for African individuals in relation to European individuals", gp = gpar(fontsize = 20, fontface = "bold"), vjust = 0.5)
+grid.arrange(grobs=list(v_PAM_t, v_R848_t, v_LPS_t, v_IAV_t), ncol=1, top=title)
+```
+
+## Results in Pam3CSK4 treatment, TRL1 activation:
+
+For European individuals positive calcium transport was a main difference, this could be the result of a mechanism that bacteria use to adhere the surface of the cell thanks to change in potential and a way to facilitate bacterial invasion (doi: 10.1007/978-3-030-12457-1_33). Immune response is a bigger difference in expression that benefit Europeans. 
+
+African individuals had more chances to adapt their bacterial response to this kind of bacteria by processing and translating RNA related to genes mediating the adaptation to bacteria process (doi: 10.1261/rna.073288.119). Cell migration was also another mechanism that was more expressed in African individuals, it could be a mechanism of protection form bacteria this is due to need for immune cells to move to the infection, it is also linked with inflammatory response that is found as a difference for some highly differentially expressed genes (doi:10.1111/j.1600-0765.1966.tb01852.x). Then African individuals presented higher expression in genes involved myeloid cell differentiation (diffferentation of immune cells) and peptidyl-tirosine phosphorylation that start signaling pathways that control cell proliferation, migration, and adhesion.
+
+## Results in R848 treatment, TRL7/8 activation:
+
+For European individuals the biggest difference was the higher expression of genes involved in immune response and the response to other organisms. Lipid metabolic processes, specially catabolic processes were also significant, this could be due to the need of across membrane cell transport.
+
+Translation in the other hand was the main difference for African individuals being activated in the response, this process can be enhaced in response to bacteria and viruses as I mentioned beforeto enhace the process of adaptation.
+
+## Results in LPS treatment, TRL4 activation:
+
+The diference for European individuals was by far the immune/biological response to viruses and other organisms. There were some big differences on humoral immune response specifically and in the chemokine signaling pathway and cytokine production resulting in adaptive inflammatory host defenses, cell growth, differentiation, cell death, angiogenesis, and development and repair processes  (https://www.genome.jp/pathway/hsa04062#:~:text=The%20chemokine%20signal%20is%20transduced,cellular%20polarization%20and%20actin%20reorganization).
+
+Africans present more chances of produce a higher inflammatory response (higher expression) and to activate non coding RNA and ribosomal RNA processes, non coding RNA indeed regulates rRNA. Ribosomal RNA can be linked with inflammatory response (doi: 10.3390/cells11091440).
+
+## Results in Influenza A Virus treatment:
+
+For African individuals the bigger difference in expression is held by response to cytokine (small proteins involved in cell signaling), immune response and other organisms response. Ubiquitin-dependent protein catabolic pathway, protein postraslational modification and endomembrane system organization are also positive differences in expression. This means  that are the main differences in response to the virus. Ubiquitin-dependent protein catabolic pathway has an antiviral role (doi: 10.3390/microorganisms8091424), the endomembrane system organization seems to be altered by viruses.
+
+For European individuals the immune response was a benefitial difference. Another processes that were linked with higher expression levels were plasma lipoprotein assembley, translation (could be induced by the virus), IL6 production (signaling), and ATP synthesis (seems to be a detrimental response directly caused by virus, doi: 10.1093/infdis/jiad442).
+

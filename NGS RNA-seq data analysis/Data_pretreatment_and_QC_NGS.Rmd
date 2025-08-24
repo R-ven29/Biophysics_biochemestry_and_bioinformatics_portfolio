@@ -1,0 +1,869 @@
+---
+title: "Big Data in Biology"
+subtitle: 'Practice 2 assignment: QC & Data pre-treatment'
+author: "Raquel Ventura Baños"
+date: "April 15, 2024"
+output: 
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: yes
+    number_sections: no
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+    toc_depth: 3
+    fig_width: 7
+    fig_height: 6
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+setwd('C:/Users/raque/OneDrive/Documentos/Master/Big data/Big_Data_Practices_23_24/Practices/Practice_2')
+library(tidyverse)
+library(readxl)
+library(writexl)
+library(reshape2)
+library(ggrepel)
+library(cowplot)
+#library(rgl)
+library(knitr)
+
+## Genomic annotations:
+library(biomaRt)
+
+## Unsupervised methods for dimensionality reduction & clustering
+library(Rtsne)
+library(umap)
+library(dendextend)
+
+## RNA-seq quantification & Differential expression libraries.
+library(tximport) 
+library(edgeR)
+library(limma)
+library(DESeq2)
+library(qvalue)
+library(ashr)
+library(mashr)
+
+
+## Useful libraries for running nerichment analyses and interpreting stats results
+library(fgsea)
+#library(clusterProfiler)
+#library(org.Hs.eg.db)
+library(AnnotationDbi)
+library(msigdbr)
+#library(enrichplot)
+library(ggnewscale)
+```
+
+### 1. Always working on dataset 2 (Krautz), let us open some black boxes:
+
+Pretreatment:
+
+```{r}
+?getBM
+
+reads=read.table("Analyses/Inputs/Raw_datasets/D2/reads.txt")
+
+first_time=TRUE
+if(first_time)
+{
+fly <- useMart(host="https://feb2021.archive.ensembl.org", biomart="ENSEMBL_MART_ENSEMBL", 
+dataset="dmelanogaster_gene_ensembl")
+dir.create("Analyses/Inputs/Raw_datasets/D2/marts",recursive=TRUE)
+save(fly,file="Analyses/Inputs/Raw_datasets/D2/marts/fly_mart.Rdata")
+} else {
+  load(file="Analyses/Inputs/Raw_datasets/D2/marts/fly_mart.Rdata")
+}
+
+possible_attributes=listAttributes(fly)
+head(possible_attributes)
+    
+genes_fly = getBM(attributes = c("flybase_gene_id","start_position","end_position","chromosome_name","gene_biotype"), 
+filters = "flybase_gene_id", values = rownames(reads) , mart = fly)
+
+head(genes_fly)
+
+length(which(!(rownames(reads) %in% genes_fly$flybase_gene_id)))
+
+rownames(genes_fly)=genes_fly$flybase_gene_id
+reads=reads[which(rownames(reads) %in% rownames(genes_fly)),]
+
+dim(genes_fly)
+length(unique(genes_fly$flybase_gene_id))
+    
+genes_fly=genes_fly[order(rownames(genes_fly)),]
+
+reads=reads[order(rownames(reads)),]
+
+length(which(rownames(reads) != rownames(genes_fly)))
+
+dir.create("Analyses/Inputs/Processed_datasets/D2/annotated/",recursive=TRUE)
+write.table(reads,"Analyses/Inputs/Processed_datasets/D2/annotated/reads.txt")
+write.table(genes_fly,"Analyses/Inputs/Processed_datasets/D2/annotated/feature_data.txt")
+
+lengths=read.table("Analyses/Inputs/Raw_datasets/D2/lengths.txt")
+tpms=read.table("Analyses/Inputs/Raw_datasets/D2/tpms.txt")
+metadata=read.table("Analyses/Inputs/Raw_datasets/D2/meta_data.txt")
+
+lengths=lengths[which(rownames(lengths) %in% rownames(reads)),]
+tpms=tpms[which(rownames(tpms) %in% rownames(reads)),]
+
+dim(lengths)
+dim(tpms)
+
+tpms=tpms[order(rownames(tpms)),]
+lengths=lengths[order(rownames(lengths)),]
+
+length(which(rownames(reads) != rownames(lengths)))
+length(which(rownames(reads) != rownames(tpms)))
+
+length(which(rownames(metadata) != colnames(reads)))
+length(which(rownames(metadata) != colnames(lengths)))
+length(which(rownames(metadata) != colnames(tpms)))
+
+
+write.table(lengths,"Analyses/Inputs/Processed_datasets/D2/annotated/lengths.txt")
+write.table(tpms,"Analyses/Inputs/Processed_datasets/D2/annotated/tpms.txt")
+write.table(metadata,"Analyses/Inputs/Processed_datasets/D2/annotated/metadata.txt")
+
+```
+
+```{r}
+
+## Lengths, reads, tpms, feature_data and meta_data from the annotated folder:
+reads=read.table("Analyses/Inputs/Processed_datasets/D2/annotated/reads.txt")
+lengths=read.table("Analyses/Inputs/Processed_datasets/D2/annotated/lengths.txt")
+tpms=read.table("Analyses/Inputs/Processed_datasets/D2/annotated/tpms.txt")
+genes_fly=read.table("Analyses/Inputs/Processed_datasets/D2/annotated/feature_data.txt")
+metadata=read.table("Analyses/Inputs/Processed_datasets/D2/annotated/metadata.txt")
+
+## let us check the dimensions of these objects and their conformation:
+
+dim(reads)
+dim(lengths)
+dim(tpms)
+dim(metadata)
+
+## compare to: 
+dim(genes_fly)
+
+## And just to be extra sure:
+length(which(rownames(reads)==rownames(lengths)))
+length(which(rownames(reads)==rownames(tpms)))
+length(which(rownames(reads)==rownames(genes_fly)))
+
+## As well as:
+length(which(colnames(reads)==colnames(tpms)))
+length(which(colnames(reads)==colnames(lengths)))
+length(which(colnames(reads)==rownames(metadata)))
+
+unique(genes_fly$chromosome_name)
+summary(factor(genes_fly$chromosome_name))
+
+unique(genes_fly$gene_biotype)
+summary(factor(genes_fly$gene_biotype))
+
+indexes_to_keep=which((genes_fly$chromosome_name %in% c("2L","2R","3L","3R","4")) & (genes_fly$gene_biotype == "protein_coding"))
+reads=reads[indexes_to_keep,]
+lengths=lengths[indexes_to_keep,]
+tpms=tpms[indexes_to_keep,]
+genes_fly=genes_fly[indexes_to_keep,]
+```
+
+
+#### -   Write a function to get tpm from fpkm, and call the results tpm_2. Compare those against tpms_1: do they match?
+
+Retrieving fpkms with the given function get_fpkm_from_counts():
+
+```{r}
+
+get_effective_counts_from_counts <- function(counts, lengths,effective_lengths,offset=1E-6)
+{
+    local_lengths=effective_lengths
+  for(i in 1:ncol(local_lengths))
+    local_lengths[,i]=lengths
+
+   issues_lengths=length(which(effective_lengths==0))
+   if(issues_lengths>0){
+       print(paste(issues_lengths," features have zero effective length: adding an arbitrary offset of ",offset," bp"))
+       effective_lengths=effective_lengths+offset
+   }
+   eff_counts=counts*lengths/effective_lengths
+   return(eff_counts)
+}
+
+get_cpm_from_counts <- function(counts,offset=1E-6)
+{
+    depths <- apply(counts,2,sum)
+    depths_mat=matrix(rep(depths,each=nrow(counts)),ncol=ncol(counts))
+
+    issues_depths=which(depths==0)
+    if(length(issues_depths)>0){
+        print(paste(issues_depths," empty libraries found; CPMs set to 0"))
+    }
+    
+    cpms=1E6*counts/(depths_mat)
+    
+    if(length(issues_depths)>0)
+    cpms[,issues_depths]=0
+
+    return(cpms)
+}
+
+get_fpkm_from_counts <- function(counts, effective_lengths,offset=1E-6)
+{
+    
+    issues_lengths=length(which(effective_lengths==0))
+    if(issues_lengths>0){
+        print(paste(issues_lengths," features have zero effective length: adding an arbitrary offset of ",offset," bp"))
+        effective_lengths=effective_lengths+offset
+    }
+  
+    depths <- apply(counts,2,sum)
+    depths_mat=matrix(rep(depths,each=nrow(counts)),ncol=ncol(counts))
+
+    issues_depths=which(depths==0)
+    if(length(issues_depths)>0){
+        print(paste(issues_depths," empty libraries found; FPKMs set to 0"))
+    }
+    
+    fpkms=1E9*counts/(effective_lengths*depths_mat) #kilobase/million reads (we have counts per base-pairs)
+    
+    if(length(issues_depths)>0)
+    fpkms[,issues_depths]=0
+
+    return(fpkms)
+}
+
+get_tpm_from_counts <- function(counts, effective_lengths,offset=1E-6)
+{
+    issues_lengths=length(which(effective_lengths==0))
+    if(issues_lengths>0){
+        print(paste(issues_lengths," features have zero effective length: adding an arbitrary offset of ",offset," bp"))
+        effective_lengths=effective_lengths+offset
+    }
+    rates = counts/effective_lengths
+    denoms = apply(rates,2,sum)
+    denoms_mat=matrix(rep(denoms,each=nrow(rates)),ncol=ncol(rates))
+    tpms=1E6*rates/denoms_mat
+    return(tpms)
+}
+ 
+genes_fly$lengths=genes_fly$end_position-genes_fly$start_position
+
+ecs=get_effective_counts_from_counts(counts=reads,lengths=genes_fly$lengths,effective_lengths=lengths)
+cpms=get_cpm_from_counts(counts=reads)
+fpkms=get_fpkm_from_counts(counts=reads,effective_lengths=lengths)
+tpms_1=get_tpm_from_counts(counts=reads,effective_lengths=lengths)
+```
+
+```{r}
+get_tpm_from_fpkm <- function(fpkm) {
+  TPM <- matrix(0, nrow = nrow(fpkm), ncol = ncol(fpkm))
+  for (i in 1:ncol(fpkm)) {
+    TPM[, i] <- (fpkm[, i] / sum(fpkm[, i])) * 1E6
+  }
+  return(TPM)
+}
+
+tpm_2=data.frame(get_tpm_from_fpkm(fpkm=fpkms))
+
+similar_tpms=(sqrt((tpms_1-tpm_2)**2)<0.05*tpms_1)
+
+equal_tpms=(tpm_2==tpms_1)
+
+length(equal_tpms[equal_tpms==TRUE])/(dim(fpkms)[1]*dim(fpkms)[2])
+
+length(similar_tpms[similar_tpms==TRUE])/(dim(fpkms)[1]*dim(fpkms)[2])
+
+dim(tpm_2)
+dim(tpms_1)
+
+type(tpms_1)
+type(tpm_2)
+
+all.equal(tpm_2, tpms_1, check.attributes=FALSE, tolerance=0.05)
+```
+
+I conclude that calculating fpkms from tpms return the same values we obtain from counts. Only a 22,3 % are exactly equal and an 77,7% have a difference of less than the 5% of the tpm_1 value (value from counts). Both tpm values are reported as true by all.equal() function.
+
+
+#### -   Re-build the entry [1,1] of the object TMM_cpms using the formula given in the theory class, and the info stored in dge\$samples.
+
+```{r}
+
+filter=function(tpms,threshold,metadata,grouping_factor){
+  number_of_groups=length(unique(metadata[,grouping_factor]))
+  medians=tpms[,1:number_of_groups]
+  colnames(medians)=unique(metadata[,grouping_factor]) 
+  
+  for(i in 1:number_of_groups)
+    medians[,i]=0
+  for(i in 1:number_of_groups)
+  {
+    set=which(metadata[,grouping_factor]==colnames(medians)[i])
+    chunk=tpms[,set]
+    medians[,i]=apply(chunk,1,median) 
+    }
+  medians$max_median=apply(medians,1,max)
+  genes_to_keep=rownames(medians)[which(medians$max_median>threshold)]
+  return(genes_to_keep)
+}
+
+genes_to_keep=filter(tpms=tpms,threshold=1,metadata=metadata,grouping_factor="Condition")
+genes_fly=genes_fly[genes_to_keep,]
+
+filtered_reads=reads[genes_to_keep,]
+filtered_lengths=lengths[genes_to_keep,]
+filtered_tpms=tpms[genes_to_keep,]
+
+filtered_ecs=ecs[genes_to_keep,]
+filtered_cpms=cpms[genes_to_keep,]
+filtered_fpkms=fpkms[genes_to_keep,]
+filtered_tpms_1=tpms_1[genes_to_keep,]
+
+
+dge <- DGEList(counts = filtered_reads)
+dge <- calcNormFactors(dge)
+
+v=voom(dge)
+TMM_cpms=v$E
+
+prod(dge$samples$norm.factors)
+```
+
+Re-building the entrance [1,1]
+
+```{r}
+dge$samples
+TMM_cpms[1,1]
+TMM1=log2(10**6*((reads[rownames(reads)==rownames(TMM_cpms)[1],1]+0.5)/(dge$samples[1,3]*sum(reads[,1])+1)))
+TMM1
+
+TMM_cpms[1,1]=TMM1
+```
+
+### 2. Apply what you have learnt to leave dataset 3 (ENCODE) ready for further analyses:
+
+```{r}
+
+?getLDS
+
+## Load the datasets
+mouse_name=load("Analyses/Inputs/Raw_datasets/D3/txi_mouse.Rdata")
+human_name=load("Analyses/Inputs/Raw_datasets/D3/txi_human.Rdata")
+
+counts_human=txi_human$counts
+counts_mouse=txi_mouse$counts
+
+remove_versions=function(x){
+    extract=function(i){strsplit(rownames(x)[i], "[.]")[[1]][1]}
+    genes=sapply(1:nrow(x),extract)
+    rownames(x)=genes
+    return(x)
+    }
+
+counts_human=remove_versions(counts_human)
+counts_mouse=remove_versions(counts_mouse)
+
+first_time_D3=TRUE
+if(first_time_D3)
+{
+mouse <- useMart(host="https://jan2019.archive.ensembl.org", biomart="ENSEMBL_MART_ENSEMBL", dataset="mmusculus_gene_ensembl")
+human <- useMart(host="https://jan2019.archive.ensembl.org", biomart="ENSEMBL_MART_ENSEMBL", dataset="hsapiens_gene_ensembl")
+
+## And we will save them, just in case 
+
+dir.create("Analyses/Inputs/Raw_datasets/D3/marts",recursive=TRUE)
+save(mouse,file="Analyses/Inputs/Raw_datasets/D3/marts/mouse.Rdata")
+save(human,file="Analyses/Inputs/Raw_datasets/D3/marts/human.Rdata")
+
+}else{
+  load(file="Analyses/Inputs/Raw_datasets/D3/marts/mouse.Rdata")
+  load(file="Analyses/Inputs/Raw_datasets/D3/marts/human.Rdata")
+}
+
+## Now, call getLDS to retrieve tehe (raw) ID mappings:
+
+genes_map = getLDS(attributes = c("ensembl_gene_id","mgi_symbol"), filters = "ensembl_gene_id", values=rownames(counts_mouse) , mart = mouse, attributesL = c("ensembl_gene_id","hgnc_symbol"), martL = human, uniqueRows=T)
+ 
+## Check the looks of this file: are the mappings unique?
+head(genes_map)
+    
+genes_map$map=paste0(genes_map$Gene.stable.ID.1,"_",genes_map$Gene.stable.ID)
+length(unique(genes_map$map))
+dim(genes_map)
+## Mappings ensemble-ensemble are not unique in this table, are bijective? No:
+    
+dupes_mouse=unique(genes_map$Gene.stable.ID[which(duplicated(genes_map$Gene.stable.ID))])
+length(dupes_mouse)
+
+dupes_human=unique(genes_map$Gene.stable.ID.1[which(duplicated(genes_map$Gene.stable.ID.1))])
+
+
+genes_map=genes_map[which(   !(genes_map$Gene.stable.ID %in% dupes_mouse)  &  !(genes_map$Gene.stable.ID.1 %in% dupes_human)),]
+dim(genes_map)
+
+length(unique(genes_map$Gene.stable.ID))
+length(unique(genes_map$Gene.stable.ID.1))
+    
+
+length(unique(genes_map$MGI.symbol))
+non_unequivocal_mouse_names=genes_map$MGI.symbol[which(duplicated(genes_map$MGI.symbol))]
+genes_map$MGI.symbol[which(genes_map$MGI.symbol %in% non_unequivocal_mouse_names)]=genes_map$Gene.stable.ID[which(genes_map$MGI.symbol %in% non_unequivocal_mouse_names)]
+
+length(unique(genes_map$MGI.symbol))
+
+## Now all are different
+length(which(genes_map$MGI.symbol==""))
+## Also, there are no gaps.
+length(unique(genes_map$HGNC.symbol))
+
+non_unequivocal_human_names=genes_map$HGNC.symbol[which(duplicated(genes_map$HGNC.symbol))]
+
+genes_map$HGNC.symbol[which(genes_map$HGNC.symbol %in% non_unequivocal_human_names)]=genes_map$Gene.stable.ID.1[which(genes_map$HGNC.symbol %in% non_unequivocal_human_names)]
+
+length(unique(genes_map$HGNC.symbol))
+
+## Now all are diofferent
+length(which(genes_map$HGNC.symbol==""))
+## Also, there are no gaps.
+
+## So, now, all mappings should be bijective.
+length(unique(genes_map$Gene.stable.ID))
+length(unique(genes_map$Gene.stable.ID.1))
+length(unique(genes_map$MGI.symbol))
+length(unique(genes_map$HGNC.symbol))
+    
+## Let us save the resulting table:
+genes_map=genes_map[,1:4]
+colnames(genes_map)=c("Ensembl_mouse","Gene_name_mouse","Ensembl_human","Gene_name_human")
+write.table(genes_map,"Analyses/Inputs/Raw_datasets/D3/feature_data_mapping.txt")
+
+length_mouse <- remove_versions(txi_mouse$length)
+length_human <- remove_versions(txi_human$length)
+```
+
+#### -   Use the gene-map generated between mouse and human gene IDs to select the ortholog genes whose expression can be safely compared across species. Put them into a single matrix appending, column wise, all samples alike: human, and mouse. Use human HUGO names as row IDs (gene_name_human), and harmonize the entire dataset (gene_mapping file, complete reads data, tpms, effective lengths, and metadata).
+
+Identifying and removing undesired genes: Retrieving the mapped gene rows for humans and mouse separately:
+
+```{r}
+index_mapped_h <- rownames(length_human) %in% genes_map[,3]
+index_keep_h <- which(index_mapped_h)
+
+length(index_keep_h)
+
+
+index_mapped_m <- rownames(length_mouse) %in% genes_map[,1]
+index_keep_m <- which(index_mapped_m)
+
+length(index_keep_m)
+```
+
+Selecting those that are common.Notice that in this step we may lost some valuable information if we want to extract conclusions about species and tissues afterwards since this selection may include highly expressed genes for each specie that are not orthologs.
+
+```{r}
+index_mapped <- index_keep_m %in% index_keep_h
+index_keep <- which(index_mapped) 
+
+length(index_keep)
+
+all.equal(rownames(counts_human[index_keep,]), rownames(length_human[index_keep,]))
+all.equal(rownames(counts_mouse[index_keep,]), rownames(length_mouse[index_keep,]))
+```
+
+Calculating lengths and effective lengths of mouse and human reads:
+
+```{r}
+length <- cbind(length_human[index_keep,], length_mouse[index_keep,])
+
+counts <- cbind(counts_human[index_keep,], counts_mouse[index_keep,])
+  
+get_effective_lengths <- function(lengths, offset=10E-6){
+   
+   effective_lengths<-lengths
+  
+   issues_lengths=length(which(effective_lengths==0))
+   if(issues_lengths>0){
+       print(paste(issues_lengths," features have zero effective length: adding an arbitrary offset of ",offset," bp"))
+       effective_lengths=effective_lengths+offset
+   }
+   return(effective_lengths)
+}
+
+effective_length <-get_effective_lengths(length) 
+```
+
+We perform the same calculations we made before to obtain tpms, cpms, fpkms and effective counts:
+
+```{r}
+get_effective_counts_from_counts <- function(counts, lengths, effective_lengths,offset=1E-6)
+{
+    local_lengths=effective_lengths
+  for(i in 1:ncol(local_lengths))
+    local_lengths[,i]=lengths[,i]
+
+   issues_lengths=length(which(effective_lengths==0))
+   if(issues_lengths>0){
+       print(paste(issues_lengths," features have zero effective length: adding an arbitrary offset of ",offset," bp"))
+       effective_lengths=effective_lengths+offset
+   }
+   eff_counts=counts*lengths/effective_lengths
+   return(eff_counts)
+}
+
+get_cpm_from_counts <- function(counts,offset=1E-6)
+{
+    depths <- apply(counts,2,sum)
+    depths_mat=matrix(rep(depths,each=nrow(counts)),ncol=ncol(counts))
+
+    issues_depths=which(depths==0)
+    if(length(issues_depths)>0){
+        print(paste(issues_depths," empty libraries found; CPMs set to 0"))
+    }
+    
+    cpms=1E6*counts/(depths_mat)
+    
+    if(length(issues_depths)>0)
+    cpms[,issues_depths]=0
+
+    return(cpms)
+}
+
+get_fpkm_from_counts <- function(counts, effective_lengths,offset=1E-6)
+{
+    
+    issues_lengths=length(which(effective_lengths==0))
+    if(issues_lengths>0){
+        print(paste(issues_lengths," features have zero effective length: adding an arbitrary offset of ",offset," bp"))
+        effective_lengths=effective_lengths+offset
+    }
+  
+    depths <- apply(counts,2,sum)
+    depths_mat=matrix(rep(depths,each=nrow(counts)),ncol=ncol(counts))
+
+    issues_depths=which(depths==0)
+    if(length(issues_depths)>0){
+        print(paste(issues_depths," empty libraries found; FPKMs set to 0"))
+    }
+    
+    fpkms=1E9*counts/(effective_lengths*depths_mat) #kilobase/million reads (we have counts per base-pairs)
+    
+    if(length(issues_depths)>0)
+    fpkms[,issues_depths]=0
+
+    return(fpkms)
+}
+
+get_tpm_from_counts <- function(counts, effective_lengths,offset=1E-6)
+{
+    issues_lengths=length(which(effective_lengths==0))
+    if(issues_lengths>0){
+        print(paste(issues_lengths," features have zero effective length: adding an arbitrary offset of ",offset," bp"))
+        effective_lengths=effective_lengths+offset
+    }
+    rates = counts/effective_lengths
+    denoms = apply(rates,2,sum)
+    denoms_mat=matrix(rep(denoms,each=nrow(rates)),ncol=ncol(rates))
+    tpms=1E6*rates/denoms_mat
+    return(tpms)
+}
+
+effective_counts_mouse <- get_effective_counts_from_counts(counts, length, effective_length)
+cpms <- get_cpm_from_counts(counts)
+tpms <- get_tpm_from_counts(counts, effective_length)
+fpkms <- get_fpkm_from_counts(counts, effective_length)
+```
+
+Creating the data frame with the HGCN names for each gene and tpms, fpkms, cpms, effective lengths and metadata.
+
+Harmonizing the dataset: Notice that genes can be deleted in this step due to the lack of HUGO names for some genes that we don't know if they could be highly expressed. 
+
+```{r}
+index_name <- rownames(length) %in% genes_map[,3] 
+index_HGNC_measures<- which(index_name) 
+dim(length[index_HGNC_measures,])
+
+index_name <- genes_map[,3] %in% rownames(length)  
+index_HGNC_genes_map<- which(index_name)
+dim(genes_map[index_HGNC_genes_map,])
+
+# I assure that rownames for different measures is equal 
+all.equal(rownames(counts[index_HGNC_measures,]), rownames(length[index_HGNC_measures,]))
+
+# I assure that names for counts and the mapping also coincide
+all.equal(sort(rownames(counts[index_HGNC_measures,])),sort(genes_map[index_HGNC_genes_map,3]))
+```
+
+```{r, echo=FALSE}
+library(dplyr)
+
+length <- length[index_HGNC_measures,]
+counts <- counts[index_HGNC_measures,]
+tpms <- tpms[index_HGNC_measures,]
+cpms <- cpms[index_HGNC_measures,]
+fpkms <- fpkms[index_HGNC_measures,]
+effective_length <- effective_length[index_HGNC_measures,]
+
+length <- arrange(as.data.frame(length))
+counts <- arrange(as.data.frame(counts))
+tpms <- arrange(as.data.frame(tpms))
+cpms <- arrange(as.data.frame(cpms))
+fpkms  <- arrange(as.data.frame(fpkms))
+effective_length <- arrange(as.data.frame(effective_length))
+```
+
+```{r}
+genes_map <- genes_map[index_HGNC_genes_map,]
+genes_map <- genes_map[order(genes_map[,3]),]
+```
+
+```{r}
+new_row_names <- genes_map[, 4]
+
+rownames(length) <- NULL
+rownames(counts) <- NULL
+rownames(tpms) <- NULL
+rownames(cpms) <- NULL
+rownames(fpkms) <- NULL
+rownames(effective_length) <- NULL
+
+length <- cbind(new_row_names, length)
+counts <- cbind(new_row_names, counts)
+tpms <- cbind(new_row_names, tpms)
+cpms <- cbind(new_row_names, cpms)
+fpkms <- cbind(new_row_names, fpkms)
+effective_length <- cbind(new_row_names, effective_length)
+```
+
+```{r}
+head(length)
+head(counts)
+```
+
+#### -   Once you got the harmonized dataset, complete the same QC process that we executed here on dataset 3. In the low-expression filtering step, discard only the genes whose median tpm is lower than 1 simultaneously in the mouse samples, on the one hand, and on the human samples, on the other hand. Here, let us focus, specifically, on the results obtained from the hierarchical clustering. What is your conclusion? What do you think are the general implications of this analysis in this particular case?
+
+Filtering tpms < 1 for both species.
+
+```{r}
+for (i in 1:length(tpms[,1])) {
+  tpms[i,28]<- mean(t(tpms[i,2:14]))
+  tpms[i,29]<- mean(t(tpms[i,15:27]))
+}
+```
+
+```{r}
+index_tpms_1 <- which(tpms[,28]>1 & tpms[,29]>1)
+```
+
+```{r}
+length <-length[index_tpms_1,]
+counts <-counts[index_tpms_1,]
+tpms <-tpms[index_tpms_1,1:27]
+cpms <-cpms[index_tpms_1,]
+fpkms <-fpkms[index_tpms_1,] 
+effective_length <-effective_length[index_tpms_1,]
+```
+
+```{r}
+write.table(length, 'Analyses/Inputs/Processed_datasets/D3/length.txt')
+write.table(counts, 'Analyses/Inputs/Processed_datasets/D3/counts.txt')
+write.table(tpms, 'Analyses/Inputs/Processed_datasets/D3/tpms.txt')
+write.table(cpms, 'Analyses/Inputs/Processed_datasets/D3/cpms.txt')
+write.table(fpkms, 'Analyses/Inputs/Processed_datasets/D3/fpkms.txt')
+write.table(effective_length, 'Analyses/Inputs/Processed_datasets/D3/effective_length.txt')
+```
+
+
+Clustering
+
+```{r}
+dge <- DGEList(counts = counts)
+dge <- calcNormFactors(dge)
+
+v=voom(dge)
+TMM_cpms=v$E
+
+clusters <- hclust(dist(t(TMM_cpms)))
+clusterCut <- cutree(clusters, 3)
+
+clusterCut
+plot(clusters)
+```
+Mouse an human are clustered separately and both tissues clusters are not comparable with each other. In this cluster I can't see any relation between tissues or species for genes since are really differentiated. Data obtained after all the treatment and filtering leads to the conclusion that specie is the principal factor contributing differentiation the expression level of each gene while differences between tissues are smaller. Furthermore, even the internal structure of the two superior branches isn't as similar as we may expect.
+
+### 3. Reproduce the pipeline above on dataset 1 (Quach), and discuss the results. In the low-expression filtering step, use tpms calculated from annotated gene lengths in the feature data table (instead of based on effective lengths per gene and sample, which we do not have here). Then, define ten groups: one per condition, within each ethnicity group (AF and EU), and discard only the genes whose median tpm is lower than 1 simultaneously in all the ten groups at once. If you find issues with the samples (e.g. samples that are clear outliers after a PCA, or whose conditions are scrambled), propose a solution for them, and iterate. How many genes and samples do you think you should stick with for downstream analyses?
+
+```{r}
+feature=read.table("Analyses/Inputs/Raw_datasets/D1/featuredata.txt")
+metadata=read.table("Analyses/Inputs/Raw_datasets/D1/metadata.txt")
+reads=read.table("Analyses/Inputs/Raw_datasets/D1/reads.txt")
+```
+
+```{r}
+get_tpm_from_counts <- function(counts, effective_lengths,offset=1E-6)
+{
+    issues_lengths=length(which(effective_lengths==0))
+    if(issues_lengths>0){
+        print(paste(issues_lengths," features have zero effective length: adding an arbitrary offset of ",offset," bp"))
+        effective_lengths=effective_lengths+offset
+    }
+    rates = counts/effective_lengths
+    denoms = apply(rates,2,sum)
+    denoms_mat=matrix(rep(denoms,each=nrow(rates)),ncol=ncol(rates))
+    tpms=1E6*rates/denoms_mat
+    return(tpms)
+}
+```
+
+
+```{r}
+tpms <- get_tpm_from_counts(reads, feature$length)
+```
+
+Filtering:
+
+```{r}
+filter=function(tpms,threshold,metadata,grouping_factor){
+  number_of_groups=length(unique(metadata[,grouping_factor]))
+  medians=tpms[,1:number_of_groups]
+  colnames(medians)=unique(metadata[,grouping_factor]) 
+  
+  for(i in 1:number_of_groups)
+    medians[,i]=0
+  for(i in 1:number_of_groups)
+  {
+    set=which(metadata[,grouping_factor]==colnames(medians)[i])
+    chunk=tpms[,set]
+    medians[,i]=apply(chunk,1,median) 
+    }
+  medians$max_median=apply(medians,1,max)
+  genes_to_keep=rownames(medians)[which(medians$max_median>threshold)]
+  return(genes_to_keep)
+}
+```
+
+```{r}
+genes_to_keep=filter(tpms=tpms,threshold=1,metadata=metadata,"condition")
+
+filtered_reads <- reads[rownames(reads) %in% genes_to_keep,]
+filtered_feature <- feature[rownames(feature) %in% genes_to_keep,]
+filtered_tpms<- tpms[rownames(tpms) %in% genes_to_keep,]
+```
+
+Checking dimensions
+
+```{r}
+dim(filtered_reads)
+dim(filtered_feature)
+dim(filtered_tpms)
+```
+
+PCA analysis:
+
+```{r}
+dge <- DGEList(counts = filtered_reads)
+dge <- calcNormFactors(dge)
+
+v=voom(dge)
+TMM_cpms=v$E
+```
+
+```{r}
+pca <-prcomp(t(TMM_cpms))
+summary_pca=data.frame(summary(pca)$importance[,c(1:5)])
+
+data<- data.frame(pca$x)
+
+data <- data.frame(pca$x)
+colnames(data)=paste0("PC",c(1:ncol(data)))
+
+data=cbind(metadata,data[,1:6])
+```
+
+```{r}
+colors_base=c("slategray2", "orange2","darkorchid2","springgreen2", "deeppink")
+
+PC1PC2_plot=ggplot(data)+
+  geom_point(aes(x=PC1,y=PC2, shape=population),size=3, color='black', stroke=0.5)+
+  geom_point(aes(x=PC1,y=PC2,color=metadata$condition, shape=population),size=2)+
+  scale_colour_manual(values=colors_base)+
+  xlab(paste0("PC1: ",round(100*summary_pca$PC1[2],digits=2),"% variance"))+
+  ylab(paste0("PC2: ",round(100*summary_pca$PC2[2],digits=2),"% variance"))
+
+PC1PC2_plot
+```
+
+```{r}
+PC1PC3_plot=ggplot(data)+
+  geom_point(aes(x=PC1,y=PC3, shape=population),size=3, color='black', stroke=0.5)+
+  geom_point(aes(x=PC1,y=PC3,color=metadata$condition, shape=population),size=2)+
+  scale_colour_manual(values=colors_base)+
+  xlab(paste0("PC1: ",round(100*summary_pca$PC1[2],digits=2),"% variance"))+
+  ylab(paste0("PC3: ",round(100*summary_pca$PC3[2],digits=2),"% variance"))
+
+PC1PC3_plot
+```
+
+```{r}
+PC2PC3_plot=ggplot(data)+
+  geom_point(aes(x=PC2,y=PC3, shape=population),size=3, color='black', stroke=0.5)+
+  geom_point(aes(x=PC2,y=PC3,color=metadata$condition, shape=population),size=2)+
+  scale_colour_manual(values=colors_base)+
+  xlab(paste0("PC2: ",round(100*summary_pca$PC2[2],digits=2),"% variance"))+
+  ylab(paste0("PC3: ",round(100*summary_pca$PC3[2],digits=2),"% variance"))
+
+PC2PC3_plot
+```
+
+I considered the removal of one gene of the dataset that is clearly an outlier in order to lead to a conclusion.
+
+```{r}
+which(data$PC3>600)
+data_remove <- data[-100,]
+metadata_remove <- metadata[-100,]
+```
+```{r}
+PC1PC2_plot=ggplot(data_remove)+
+  geom_point(aes(x=PC1,y=PC2, shape=population),size=3, color='black', stroke=0.5)+
+  geom_point(aes(x=PC1,y=PC2,color=metadata_remove$condition, shape=population),size=2)+
+  scale_colour_manual(values=colors_base)+
+  xlab(paste0("PC1: ",round(100*summary_pca$PC1[2],digits=2),"% variance"))+
+  ylab(paste0("PC2: ",round(100*summary_pca$PC2[2],digits=2),"% variance"))
+
+PC1PC2_plot
+```
+
+```{r}
+PC1PC3_plot=ggplot(data_remove)+
+  geom_point(aes(x=PC1,y=PC3, shape=population),size=3, color='black', stroke=0.5)+
+  geom_point(aes(x=PC1,y=PC3,color=metadata_remove$condition, shape=population),size=2)+
+  scale_colour_manual(values=colors_base)+
+  xlab(paste0("PC1: ",round(100*summary_pca$PC1[2],digits=2),"% variance"))+
+  ylab(paste0("PC3: ",round(100*summary_pca$PC3[2],digits=2),"% variance"))
+
+PC1PC3_plot
+```
+
+```{r}
+PC2PC3_plot=ggplot(data_remove)+
+  geom_point(aes(x=PC2,y=PC3, shape=population),size=3, color='black', stroke=0.5)+
+  geom_point(aes(x=PC2,y=PC3,color=metadata_remove$condition, shape=population),size=2)+
+  scale_colour_manual(values=colors_base)+
+  xlab(paste0("PC2: ",round(100*summary_pca$PC2[2],digits=2),"% variance"))+
+  ylab(paste0("PC3: ",round(100*summary_pca$PC3[2],digits=2),"% variance"))
+
+PC2PC3_plot
+```
+
+This PCA analysis doesn't show a difference between populations, there's a clear difference for the response to conditions, and a marked difference of expression for IAV conditions form the rest.
+
+
+
