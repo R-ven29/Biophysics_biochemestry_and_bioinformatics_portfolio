@@ -13,7 +13,7 @@ In this repository I'll be including projects related to biophysics, biochemistr
   
  ## Projects Overview
 
-- [Biological systems modeling](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Biological_systems_modeling/index.html)
+- [Biological systems modeling](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/Biological_systems_modeling/index.html)
 - [RNA-seq analysis](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/RNAseq_analysis/index.html)
 - [Protein mining](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Protein_mining/index.html)
 - [Drug discovery](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Drug_discovery/index.html)
