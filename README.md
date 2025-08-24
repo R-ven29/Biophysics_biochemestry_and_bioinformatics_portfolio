@@ -13,12 +13,12 @@ In this repository I'll be including projects related to biophysics, biochemistr
   
  ## Projects Overview
 
-- [Biological Systems Modeling](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Biological_systems_modeling/index.html)
-- [RNA-seq Analysis](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/RNAseq_analysis/index.html)
-- [Protein Mining](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Protein_mining/index.html)
-- [Drug Discovery](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Drug_discovery/index.html)
-- [Systems Biology](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Systems_biology/index.html)
-- [Instrumental Techniques](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Instrumental_techniques/index.html)
+- [Biological systems modeling](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Biological_systems_modeling/index.html)
+- [RNA-seq analysis](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/RNAseq_analysis/index.html)
+- [Protein mining](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Protein_mining/index.html)
+- [Drug discovery](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Drug_discovery/index.html)
+- [Systems biology](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Systems_biology/index.html)
+- [Instrumental techniques](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Instrumental_techniques/index.html)
 
 
   
