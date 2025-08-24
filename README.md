@@ -9,7 +9,7 @@ In this repository I'll be including projects related to biophysics, biochemistr
       * Spectroscopy
       * Cellular nuclei marking and visualization
       * Small-molecules screening
-      * Organic synthesis (Final degree project)
+      * Organic synthesis ([Final degree project](https://github.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/blob/main/Instrumental%20techniques/Degree_Final_Project_Raquel_Ventura.pdf))
 
 
 
