@@ -1,0 +1,398 @@
+---
+title: "Simulations for Brownian Motion with the Langevin Equation"
+output: 
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+    toc_depth: 2
+    fig_width: 7
+    fig_height: 8
+    fig_caption: true
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# For one experiment, change over time
+
+## 1. Distribution of Gaussian random numbers.
+
+```{r}
+y<-runif(1000)
+hist(y)
+
+y1<-rnorm(1000)
+
+x=seq(-3,3,by=6/1000)
+
+hist(y1, probability=TRUE)
+curve(dnorm(x,mean=0,sd=1),xlim=c(-3,3), ylim=c(0,0.5), col='red')
+lines(density(y1))
+
+shapiro.test(y1)
+```
+For an $\alpha > 0.05$ and $W\~1$ we can conclude that the randomly generated data for rnorm() follows a gaussian/normal as the function indicates distribution while the random numbers generation function runif doesn't.
+
+## 2. x(t) of different experiments with the same parameters.
+
+• For $\gamma$ = 1 we can plot 100 different experiments with the code that follows:
+
+```{r}
+
+LE_function <- function(dt, t_finish, N, gamma){ 
+  mass <- 1
+  t <- seq(dt,t_finish, by=dt)
+  
+  N_steps <- as.integer(t_finish / dt)
+  kbT_vec <- 1.0
+  
+  x <- matrix(0,N_steps,N)
+  v <- matrix(0,N_steps,N)
+  v_square <- matrix(0,N_steps,N)
+  x_square <- matrix(0,N_steps,N)
+  
+  for  (i in 1:N){
+    v[1,i] <- rnorm(1)
+    
+    D <- kbT_vec / gamma
+    B_gj <- 1 / (1 + gamma * dt / (2 * mass))
+    A_gj <- B_gj * (1 - gamma * dt / (2 * mass))
+    stoch <- sqrt(2 * kbT_vec * gamma * dt)
+    
+    for (index_step in 2:N_steps) {
+      W <- stoch * rnorm(1)
+      x[index_step, i] <- x[index_step - 1,i] + B_gj * dt * v[index_step - 1, i] + (B_gj * dt / (2 * mass)) * W
+      v[index_step, i] <- A_gj * v[index_step - 1, i ] + (B_gj / mass) * W
+      v_square[index_step, i] <- ((index_step - 1) * v_square[index_step - 1, i] + v[index_step, i]^2) / index_step
+      x_square[index_step, i] <- ((index_step - 1) * x_square[index_step - 1, i] + x[index_step, i]^2) / index_step
+    }
+  }
+  return(data.frame(x=x, v=v, x2=x_square, v2=v_square,t))
+}
+
+x <- LE_function(0.001,20,100,1)[,1:100]
+```
+
+```{r}
+plot(1, type='n', xlab='t', ylab='x(t)', xlim=c(0,20), ylim=c(-15,15), lty=1, lwd=1)
+for (i in 1:100){
+lines(x=seq(0.001,20,by=0.001), y=x[,i], col=i)
+}
+
+x_fin <- t(x[20000,])
+
+hist(x_fin, breaks=15, probability = TRUE)
+lines(density(x_fin))
+
+shapiro.test(x_fin)
+```
+
+## 3. x(t) by changing the parameters:
+
+```{r}
+x1 <- LE_function(0.001,20,1,0.1)[,1]
+x2 <- LE_function(0.001,20,1,1)[,1]
+x3 <- LE_function(0.001,20,1,10)[,1]
+t <- LE_function(0.001,20,1,10)[,5]
+
+plot(1, type='n', xlab='t', ylab='x(t)', xlim=c(0,20), ylim=c(-30,30), lty=1, lwd=1)
+lines(x=t, y=x1, col=1)
+lines(x=t, y=x2, col=2)
+lines(x=t, y=x3, col=3)
+legend(15,15,legend=c(0.1,1,10), col=c(1,2,3),lty=c(1,1), cex=1, title='gamma')
+```
+
+## 4. v(t) and its Gaussian distribution at the end of the simulation.
+
+```{r}
+v <- LE_function(0.001,2000,1,1)[,2]
+```
+
+```{r}
+plot(1, type='n', xlab='t', ylab='v(t)', ylim=c(-3,3), xlim=c(0,200), lty=1, lwd=1)
+lines(x=LE_function(0.001,2000,1,1)$t, y=v, col=i)
+
+curve(dnorm(x,mean=0,sd=1), xlim=c(-3,3), ylim=c(0,0.5), col='red')
+lines(density(v),col=1)
+```
+
+```{r}
+print(shapiro.test(sample(v, 5000)))
+```
+For an $\alpha > 0.01$ and W\~1 we can conclude that velocity follows a gaussian distribution.
+
+## 5. $<\frac{1}{2}mv^2(t)>$ versus t plot changing the parameters showing:
+
+• $\gamma$ = 0.1, 1, 10
+• The equipartition of energy $<E_c>=\frac{1}{2}k_{B}T$
+
+```{r}
+v_square_1 <- LE_function(0.001,20,1,0.1)[,3]
+v_square_2 <- LE_function(0.001,20,1,1)[,3]
+v_square_3 <- LE_function(0.001,20,1,10)[,3]
+t <- LE_function(0.001,20,1,10)[,5]
+
+plot(1, type='n', xlab='t', ylab='1/2mv**(t)', ylim=c(0,30), xlim=c(0,20), lty=1, lwd=1)
+lines(x=t, y=((1/2)*1*v_square_1), col=1)
+lines(x=t, y=((1/2)*1*v_square_2), col=2)
+lines(x=t, y=((1/2)*1*v_square_3), col=3)
+legend(10,20,legend=c(0.1,1,10), col=c(1,2,3),lty=c(1,1), cex=1, title='gamma')
+
+mean((1/2)*1*v_square_1)
+mean((1/2)*1*v_square_2)
+mean((1/2)*1*v_square_3)
+```
+We prove that at least for gamma=1 and gamma=10 we have a mean of kinetic energy of more or less 0.5 for a mass=1. 
+
+# For a number of experiments equal or more than 200
+
+## 1. $<\frac{1}{2}mv^2(t)>_{N_{exp}}$ versus t plot.
+
+```{r}
+v2_f <- function(dt, t_finish, N, gamma){ 
+  mass <- 1
+  t <- seq(dt,t_finish, by=dt)
+  
+  N_steps <- as.integer(t_finish / dt)
+  kbT_vec <- 1.0
+  
+  x <- matrix(0,N_steps,N)
+  v <- matrix(0,N_steps,N)
+  v_square <- matrix(0,N_steps,N)
+  x_square <- matrix(0,N_steps,N)
+  
+  for  (i in 1:N){
+    v[1,i] <- rnorm(1)
+    
+    D <- kbT_vec / gamma
+    B_gj <- 1 / (1 + gamma * dt / (2 * mass))
+    A_gj <- B_gj * (1 - gamma * dt / (2 * mass))
+    stoch <- sqrt(2 * kbT_vec * gamma * dt)
+    
+    for (index_step in 2:N_steps) {
+      W <- stoch * rnorm(1)
+      v[index_step,i] <- A_gj * v[index_step - 1,i] + (B_gj / mass) * W
+      v_square[index_step, i] <- ((index_step - 1) * v_square[index_step - 1, i] + v[index_step, i]^2) / index_step
+    }
+  }
+  return(data.frame(v2=v_square,t))
+}
+```
+
+```{r}
+v1_200 <- c()
+for (i in 1:(20/0.1)){
+v1_200 <- rbind(v1_200, mean(t(v2_f(0.1,20,200,0.1)[i,1:200])))
+}
+
+v2_200 <- c()
+for (i in 1:(20/0.1)){
+v2_200 <- rbind(v2_200, mean(t(v2_f(0.1,20,200,1)[i,1:200])))
+}
+
+v3_200 <- c()
+for (i in 1:(20/0.1)){
+v3_200 <- rbind(v3_200, mean(t(v2_f(0.1,20,200,10)[i,1:200])))
+}
+```
+
+```{r}
+plot(1, type='n', xlab='t', ylab='1/2mv**(t)', ylim=c(0,1), xlim=c(0,20), lty=1, lwd=1)
+lines(x=seq(0.1,20,by=0.1), y=((1/2)*1*v1_200), col=1)
+lines(x=seq(0.1,20,by=0.1), y=((1/2)*1*v2_200), col=2)
+lines(x=seq(0.1,20,by=0.1), y=((1/2)*1*v3_200), col=3)
+legend(10,20,legend=c(13,0.75,10), col=c(1,2,3),lty=c(1,1), cex=1, title='gamma')
+```
+
+## 2. $<x2(t)>_{N{exp}}$ versus t plot.
+
+```{r}
+x2_f <- function(dt, t_finish, N, gamma, kbT_vec){ 
+  mass <- 1
+  t <- seq(dt,t_finish, by=dt)
+  
+  N_steps <- as.integer(t_finish / dt)
+  
+  x <- matrix(0,N_steps,N)
+  v <- matrix(0,N_steps,N)
+  v_square <- matrix(0,N_steps,N)
+  x_square <- matrix(0,N_steps,N)
+  
+  for  (i in 1:N){
+    v[1,i] <- rnorm(1)
+    
+    D <- kbT_vec / gamma
+    B_gj <- 1 / (1 + gamma * dt / (2 * mass))
+    A_gj <- B_gj * (1 - gamma * dt / (2 * mass))
+    stoch <- sqrt(2 * kbT_vec * gamma * dt)
+    
+    for (index_step in 2:N_steps) {
+      W <- stoch * rnorm(1)
+      x[index_step, i] <- x[index_step - 1,i] + B_gj * dt * v[index_step - 1, i] + (B_gj * dt / (2 * mass)) * W
+      x_square[index_step, i] <- ((index_step - 1) * x_square[index_step - 1, i] + x[index_step, i]^2) / index_step
+    }
+  }
+  return(data.frame(x2=x_square,t))
+}
+```
+
+```{r}
+x1_200 <- c()
+for (i in 1:(20/0.1)){
+x1_200 <- rbind(x1_200, mean(t(x2_f(0.1,20,200,0.1,0.1)[i,1:200])))
+}
+
+x2_200 <- c()
+for (i in 1:(20/0.1)){
+x2_200 <- rbind(x2_200, mean(t(x2_f(0.1,20,200,1,0.1)[i,1:200])))
+}
+
+x3_200 <- c()
+for (i in 1:(20/0.1)){
+x3_200 <- rbind(x3_200, mean(t(x2_f(0.1,20,200,10,0.1)[i,1:200])))
+}
+
+```
+
+```{r}
+plot(1, type='n', xlab='t', ylab='x^2(t)', ylim=c(0,0.02), xlim=c(0,20), lty=1, lwd=1)
+lines(x=seq(0.1,20,by=0.1), y=(x1_200), col=1)
+lines(x=seq(0.1,20,by=0.1), y=(x2_200), col=2)
+lines(x=seq(0.1,20,by=0.1), y=(x3_200), col=3)
+legend(10,20,legend=c(0,0.015,10), col=c(1,2,3),lty=c(1,1), cex=1, title='gamma')
+```
+
+## 3. The distribution of the displacements is Gaussian at “any” time, three examples:
+
+```{r}
+x <- LE_function(0.1,20,200,1)[,1:200]
+```
+
+```{r}
+plot(1, type='n', xlab='t', ylab='x(t)', xlim=c(0,20), ylim=c(-15,15), lty=1, lwd=1)
+for (i in 1:200){
+lines(x=LE_function(0.1,20,1,1)$t, y=x[,i], col=i)
+}
+
+x_1 <- t(x[200,])
+x_2 <- t(x[133,])
+x_3 <- t(x[70,])
+
+plot(density(x_3), col=3)
+lines(density(x_2), col=2)
+lines(density(x_1), col=1)
+
+shapiro.test(x_1)
+shapiro.test(x_2)
+shapiro.test(x_3)
+```
+
+Distribution  is gaussian every time since, the three samples are normally distributed.
+
+## 4. Simulation with 200 particles for 2-dimensional dynamics.
+
+• x(t) and y(t) for 200 particles
+
+• v(t) for 200 particles
+
+• Changing $\gamma$ and $k_{B}T$ parameters
+
+• $<x2(t)>_{N{exp}}$ for 200 particles.
+
+• Showing the equipartition of energy $<E_c>=\frac{1}{2}k_{B}T$
+
+• Showing the distribution of the displacements is Gaussian at “any” time.
+
+```{r}
+
+gamma=1
+N=200
+mass <- 1
+dt=0.01
+t_finish=20
+t <- seq(0.01,20, by=0.01)
+
+N_steps <- as.integer(20/0.01)
+kbT_vec <- 1.0
+
+x <- matrix(0,N_steps,N)
+y <- matrix(0,N_steps,N)
+v <- matrix(0,N_steps,N)
+v_square <- matrix(0,N_steps,N)
+x_square <- matrix(0,N_steps,N)
+y_square <- matrix(0,N_steps,N)
+
+for  (i in 1:N){
+  v[1,i] <- rnorm(1)
+  
+  D <- kbT_vec / gamma
+  B_gj <- 1 / (1 + gamma * dt / (2 * mass))
+  A_gj <- B_gj * (1 - gamma * dt / (2 * mass))
+  stoch <- sqrt(2 * kbT_vec * gamma * dt)
+  
+  for (index_step in 2:N_steps) {
+    W <- stoch * rnorm(1)
+    y[index_step, i] <- y[index_step - 1,i] + B_gj * dt * v[index_step - 1, i] + (B_gj * dt / (2 * mass)) * W
+    x[index_step, i] <- x[index_step - 1,i] + B_gj * dt * v[index_step - 1, i] + (B_gj * dt / (2 * mass)) * W
+    v[index_step, i] <- A_gj * v[index_step - 1, i ] + (B_gj / mass) * W
+    v_square[index_step, i] <- ((index_step - 1) * v_square[index_step - 1, i] + v[index_step, i]^2) / index_step
+    x_square[index_step, i] <- ((index_step - 1) * x_square[index_step - 1, i] + x[index_step, i]^2) / index_step
+    y_square[index_step, i] <- ((index_step - 1) * y_square[index_step - 1, i] + y[index_step, i]^2) / index_step
+  }
+}
+```
+
+```{r}
+plot(1, type='n', xlab='t', ylab='y(t)', xlim=c(0,20), ylim=c(-15,15), lty=1, lwd=1)
+for (i in 1:200){
+lines(x=t, y=y[,i], col=i)
+}
+
+plot(1, type='n', xlab='t', ylab='x(t)', xlim=c(0,20), ylim=c(-15,15), lty=1, lwd=1)
+for (i in 1:200){
+lines(x=t, y=x[,i], col=i)
+}
+```
+```{r}
+x_1 <- t(x[200,])
+x_2 <- t(x[133,])
+x_3 <- t(x[70,])
+
+plot(density(x_3), col=3)
+lines(density(x_2), col=2)
+lines(density(x_1), col=1)
+
+shapiro.test(x_1)
+shapiro.test(x_2)
+shapiro.test(x_3)
+```
+
+```{r}
+x1_200_2d <- c()
+for (i in 1:(20/0.01)){
+x1_200_2d <- rbind(x1_200_2d, mean(t(x_square[i,])))
+}
+
+plot(x=t, y=x1_200_2d, ylab='x^2(t)', xlab='t')
+summary(lm(x1_200_2d~t))
+```
+
+```{r}
+v1_200_2d <- c()
+for (i in 1:(20/0.01)){
+v1_200_2d <- rbind(v1_200_2d, mean(t(v_square[i,])))
+}
+```
+
+```{r}
+plot(x=t, y=v1_200_2d*0.5)
+mean(v1_200_2d*0.5)
+```
+
+There is an equipartition energy of $\frac{1}{2}k_{B}T$ and a value of kinetic energy of 0.5, which is near to the calculated mean. 

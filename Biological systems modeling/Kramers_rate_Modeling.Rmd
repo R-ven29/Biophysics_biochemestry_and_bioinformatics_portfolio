@@ -1,0 +1,461 @@
+---
+title: "kramers Practice"
+output: 
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+    toc_depth: 2
+    fig_width: 9
+    fig_height: 7
+    fig_caption: true
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Simulation for one experiment, single trajectory.
+
+```{r}
+potential <- function(x, B, F_c) {
+  return(B * (((x^2) - 1)^2) - F_c * x)
+}
+
+force_potential <- function(x, B, F_c) {
+  return(-4 * B * x * (x^2 - 1) + F_c)
+}
+
+gamma_vec <- c(0.1, 1, 10.0)
+B_vec <- c(0.1, 1, 1.5)
+F_c <- 0.0
+mass <- 1.0
+kbT <- 1.0
+
+delta_t <- 0.01
+N_exps <- 3
+t_finish <- 1000
+
+N_steps <- as.integer(t_finish / delta_t)
+
+x_gamma <- matrix(0, nrow = length(gamma_vec), ncol = N_steps)
+x_B <- matrix(0, nrow = length(B_vec), ncol = N_steps)
+v_2 <- numeric(N_steps)
+
+for (index_gamma in seq_along(gamma_vec)) {
+  for (index_B in seq_along(B_vec)) {
+    
+    x <- matrix(0, nrow = N_exps, ncol = N_steps)
+    v <- matrix(0, nrow = N_exps, ncol = N_steps)
+    
+    v[, 1] <- runif(N_exps) - 0.5
+    v_2[1] <- sum(v[, 1]^2) / N_exps
+    
+    x[, 1] <- sample(c(-1, 1), size = N_exps, replace = TRUE)
+    
+    B_gj <- 1 / (1 + gamma_vec[index_gamma] * delta_t / (2 * mass))
+    A_gj <- B_gj * (1 - gamma_vec[index_gamma] * delta_t / (2 * mass))
+    stoch <- sqrt(2 * gamma_vec[index_gamma] * kbT * delta_t)
+    
+    for (index_step in 2:N_steps) {
+      W <- stoch * rnorm(N_exps)
+      
+      x[, index_step] <- x[, index_step - 1] + B_gj * delta_t * v[, index_step - 1] + (B_gj * delta_t * delta_t / (2* mass)) * force_potential(x[, index_step - 1], B_vec[index_B], F_c) + (B_gj * delta_t / (2 * mass)) * W
+      
+      
+      v[, index_step] <- A_gj * v[, index_step - 1] + (delta_t / (2 * mass)) * (A_gj * force_potential(x[,index_step - 1], B_vec[index_B], F_c) + force_potential(x[, index_step], B_vec[index_B], F_c)) + (B_gj / mass) * W
+      
+      v_2[index_step] <- (v_2[index_step - 1] * (index_step - 1) + sum(v[, index_step]^2) / N_exps) / index_step
+    
+    
+      if (B_vec[index_B] == 1) {
+        x_gamma[index_gamma, ] <- x[1, ]
+      }
+      
+      if (gamma_vec[index_gamma] == 1) {
+        x_B[index_B, ] <- x[1, ]
+      }
+    }
+  }
+}
+```
+
+
+## 1. Plot x(t) of different experiments with the SAME parameters, $k_BT = 1$, 𝛾 = 1, B = 1.
+
+I'm going to plot the first 400 seconds since the trajectory is then well defined in the graph. 
+
+```{r}
+t=seq(delta_t,t_finish,by=delta_t)
+
+plot(1, type='n', xlab='t in seconds', ylab='x(t) for gamma, B and K_B*T of 1', xlim=c(0,400), ylim=c(-1.4,1.4), lty=1, lwd=1)
+for (i in 1:N_exps){
+lines(x=t, y=x[i,], col=i)
+}
+legend(340,1.3,legend=c(1,2,3), col=c(1,2,3),lty=c(1,1), cex=0.8, title='experiments')
+```
+
+## 2. Verify the kinetic energy equipartition
+
+```{r}
+plot(1, type='n', xlab='t in seconds', ylab='v**2(t)', xlim=c(0,1000), ylim=c(0,0.6), lty=1, lwd=1)
+lines(x=t, y=v_2*0.5, col=1)
+```
+
+The energy value coincides with the value 0.5 for the energy of equipartition for a particle of mass 1.
+
+## 3. Plot the distribution of the positions x
+
+```{r}
+hist(x[1,], breaks = 15, probability = TRUE)
+lines(density(x[1,]),col=5)
+```
+
+## 4. Show how the trajectories x(t) behave by changing the parameters:
+
+### • 𝛾 = 0.1, 10
+
+Same B and different gamma.
+
+```{r}
+plot(1, type='n', xlab='t in seconds', ylab='x(t)', xlim=c(0,1000), ylim=c(-2,2), lty=1, lwd=1)
+lines(x=t, y=x_gamma[1,], col=1)
+lines(x=t, y=x_gamma[3,], col=5)
+legend(840, 2,legend=c(0.1,10), col=c(1,5),lty=c(1,1), cex=0.8, title='gamma')
+```
+
+### • B = 0.1, 1.5
+
+Same gamma and different B.
+
+```{r}
+plot(1, type='n', xlab='t in seconds', ylab='x(t)', xlim=c(0,1000), ylim=c(-2.5,2.5), lty=1, lwd=2)
+lines(x=t, y=x_B[1,], col=1, lwd=1)
+lines(x=t, y=x_B[3,], col=5, lwd=1)
+legend(840,2.4,legend=c(0.1,1.5), col=c(1,5),lty=c(1,1), cex=0.8, title='B')
+```
+
+### Comment the outcomes.
+
+For greater B there's a larger range of variability meanwhile for greater values of gamma we have more variability within the same range. For a high viscosity the rate of change is bigger, that explains the behavior seen above for gamma changes. In the case of B since the parameter affects velocity it amplifies directly the range of movement.
+
+# For a number of experiments of 200, ensemble average
+
+I decided to perform the simulation with a smaller delta_t since the code runs faster and this doesn't seem to alter the results. I fixed gamma and B with a value of 1. I'll be iterating x for different forces (even $F_c = 0$) since is asked below and I'm only performing 1 simulation of 200*length(F_c) experiments for this entire section.
+
+```{r}
+potential <- function(x, B, F_c) {
+  return(B * (((x^2) - 1)^2) - F_c * x)
+}
+
+force_potential <- function(x, B, F_c) {
+  return(-4 * B * x * (x^2 - 1) + F_c)
+}
+
+gamma_vec <- c(0.1, 1, 10.0)
+B_vec <- c(0.1, 1, 1.5)
+F_c <- c(0.1,0.5,2,0)
+mass <- 1.0
+kbT <- 1.0
+
+delta_t <- 0.01
+length(F_c) <- 200
+t_finish <- 1000
+
+N_steps <- as.integer(t_finish / delta_t)
+
+v_2 <- numeric(N_steps)
+x <- matrix(0,nrow=length(F_c),ncol=N_steps)
+v <- matrix(0,nrow=length(F_c),ncol=N_steps)
+
+v[,1] <- runif(length(F_c)) - 0.5
+v_2[1] <- sum(v[,1]^2) / length(F_c)
+x[,1] <- sample(c(-1, 1), size = length(F_c), replace = TRUE)
+
+v_2_f1 <- numeric(N_steps)
+v_2_f2 <- numeric(N_steps)
+v_2_f3 <- numeric(N_steps)
+
+index_gamma=2
+index_B=2
+
+x_f1 <- matrix(0, nrow = length(F_c), ncol = N_steps)
+x_f2 <- matrix(0, nrow = length(F_c), ncol = N_steps)
+x_f3 <- matrix(0, nrow = length(F_c), ncol = N_steps)
+
+v_f1 <- matrix(0, nrow = length(F_c), ncol = N_steps)
+v_f2 <- matrix(0, nrow = length(F_c), ncol = N_steps)
+v_f3 <- matrix(0, nrow = length(F_c), ncol = N_steps)
+  
+  B_gj <- 1 / (1 + gamma_vec[index_gamma] * delta_t / (2 * mass))
+  A_gj <- B_gj * (1 - gamma_vec[index_gamma] * delta_t / (2 * mass))
+  stoch <- sqrt(2 * gamma_vec[index_gamma] * kbT * delta_t)
+
+  v_f1[,1] <- runif(length(F_c)) - 0.5
+  v_f2[,1] <- runif(length(F_c)) - 0.5
+  v_f3[,1] <- runif(length(F_c)) - 0.5
+
+  v_2_f1[1] <- sum(v[,1]^2) / length(F_c)
+  v_2_f2[1] <- sum(v[,1]^2) / length(F_c)
+  v_2_f3[1] <- sum(v[,1]^2) / length(F_c)
+
+  x_f1[,1] <- sample(c(-1, 1), size = length(F_c), replace = TRUE)
+  x_f2[,1] <- sample(c(-1, 1), size = length(F_c), replace = TRUE)
+  x_f3[,1] <- sample(c(-1, 1), size = length(F_c), replace = TRUE)
+  
+  for (index_step in 2:N_steps) {
+      
+      W <- stoch * rnorm(length(F_c))
+      
+      x_f1[,index_step] <- x_f1[, index_step- 1] + B_gj * delta_t * v_f1[, index_step- 1] + (B_gj * delta_t * delta_t /(2* mass)) * force_potential(x_f1[, index_step - 1], B_vec[index_B], F_c[1]) + (B_gj * delta_t / (2 * mass)) * W
+      
+      v_f1[,index_step] <- A_gj * v_f1[, index_step- 1] + (delta_t / (2 * mass)) * (A_gj * force_potential(x_f1[, index_step- 1], B_vec[index_B], F_c[1]) + force_potential(x_f1[, index_step], B_vec[index_B], F_c[1])) + (B_gj / mass) * W
+      
+      v_2_f1[index_step] <- (v_2_f1[index_step - 1] * (index_step - 1) + sum(v_f1[, index_step]^2) / length(F_c)) /index_step
+      
+      
+      x_f2[,index_step] <- x_f2[, index_step- 1] + B_gj * delta_t * v_f2[, index_step- 1] + (B_gj * delta_t * delta_t /(2* mass)) * force_potential(x_f2[, index_step - 1], B_vec[index_B], F_c[2]) + (B_gj * delta_t / (2 * mass)) * W
+      
+      v_f2[,index_step] <- A_gj * v_f2[, index_step- 1] + (delta_t / (2 * mass)) * (A_gj * force_potential(x_f2[, index_step- 1], B_vec[index_B], F_c[2]) + force_potential(x_f2[, index_step], B_vec[index_B], F_c[2])) + (B_gj / mass) * W
+      
+      v_2_f2[index_step] <- (v_2_f2[index_step - 1] * (index_step - 1) + sum(v_f2[, index_step]^2) / length(F_c)) /index_step
+      
+      
+      x_f3[,index_step] <- x_f3[, index_step- 1] + B_gj * delta_t * v_f3[, index_step- 1] + (B_gj * delta_t * delta_t /(2* mass)) * force_potential(x_f3[, index_step - 1], B_vec[index_B], F_c[3]) + (B_gj * delta_t / (2 * mass)) * W
+      
+      v_f3[,index_step] <- A_gj * v_f3[, index_step- 1] + (delta_t / (2 * mass)) * (A_gj * force_potential(x_f3[, index_step- 1], B_vec[index_B], F_c[3]) + force_potential(x_f3[, index_step], B_vec[index_B], F_c[3])) + (B_gj / mass) * W
+      
+      v_2_f3[index_step] <- (v_2_f3[index_step - 1] * (index_step - 1) + sum(v_f3[, index_step]^2) / length(F_c)) /index_step
+      
+            x[,index_step] <- x[, index_step- 1] + B_gj * delta_t * v[, index_step- 1] + (B_gj * delta_t * delta_t /(2* mass)) * force_potential(x[, index_step - 1], B_vec[index_B], F_c[4]) + (B_gj * delta_t / (2 * mass)) * W
+      
+      v[,index_step] <- A_gj * v[, index_step- 1] + (delta_t / (2 * mass)) * (A_gj * force_potential(x[, index_step- 1], B_vec[index_B], F_c[4]) + force_potential(x[, index_step], B_vec[index_B], F_c[4])) + (B_gj / mass) * W
+      
+      v_2[index_step] <- (v_2[index_step - 1] * (index_step - 1) + sum(v[, index_step]^2) / length(F_c)) /index_step
+    }
+```
+
+
+## 1. Plot the histogram of the residence time in each potential well
+
+For one particle (1st experiment made by the simulation), being res_t_max the time in which x has higher values than zero in a row and res_t_min the same value for x<0.
+
+```{r}
+t <- 0
+res_t_max <- NULL
+  
+for (i in 2:N_steps) {
+  if (x[1, i] > 0) {
+    t <- t + 1
+  } else {
+    t <- 0
+  }
+  res_t_max <- cbind(res_t_max, t * 0.01)
+}
+
+hist(res_t_max[res_t_max!=0])
+```
+```{r}
+t <- 0
+res_t_min <- NULL
+  
+for (i in 2:N_steps) {
+  if (x[1, i] < 0) {
+    t <- t + 1
+  } else {
+    t <- 0
+  }
+  res_t_min <- cbind(res_t_min, t * 0.01)
+}
+
+hist(res_t_min[res_t_min!=0])
+```
+
+## 2. Verify the Kramers LAW from the average passage time (t(kBT)) (calculate the height of the barrier with a FIT)
+
+
+
+```{r}
+max <- hist(res_t_max[res_t_max!=0])
+min <- hist(res_t_min[res_t_min!=0])
+
+max$counts
+min$counts
+
+summary(lm(log(max$counts)~max$breaks[max$breaks!=0]))
+summary(lm(log(min$counts)~min$breaks[min$breaks!=0]))
+```
+The slope -0.1681 and -0.2165 estimate the energetical barrier since $k_BT$ is 1.
+
+## 3. Add a constant force (plot the new potential) – Fc = 0.1, 0.5, 2
+
+```{r}
+V <- function(x, F_c){
+  return (1*(x**2 - 1)**2 - F_c * x)
+}
+
+plot(1, type='n', xlab='x', ylab='V(x)', xlim=c(-1.5,1.5), ylim=c(-0.5,3))
+lines(x=x[1,], y=V(x[1,],0), col=1)
+lines(x=x_f1[1,], y=V(x_f1[1,],0.1), col=2)
+lines(x=x_f2[1,], y=V(x_f2[1,],0.2), col=3)
+lines(x=x_f3[1,], y=V(x_f3[1,],0.5), col=4)
+legend(1.1,2.8,legend=c(0,0.1,0.2,0.5), lty=1, col=c(1,2,3,4),cex=0.8, title='F_c')
+```
+
+## 4. Plot the distribution of positions x at the different forces
+
+Plot of the first experiment:
+
+```{r}
+plot(1, type='n', xlab='t in seconds', ylab='x(t) for Fc=0.1', xlim=c(0,1000), ylim=c(-2,2), lty=1, lwd=1)
+lines(x=seq(delta_t,t_finish,by=delta_t), y=x_f1[1,], col=1)
+plot(1, type='n', xlab='t in seconds', ylab='x(t) for Fc=0.2', xlim=c(0,1000), ylim=c(-2,2), lty=1, lwd=1)
+lines(x=seq(delta_t,t_finish,by=delta_t), y=x_f2[1,], col=2)
+plot(1, type='n', xlab='t in seconds', ylab='x(t) for Fc=0.5', xlim=c(0,1000), ylim=c(-2,2), lty=1, lwd=1)
+lines(x=seq(delta_t,t_finish,by=delta_t), y=x_f3[1,], col=3)
+plot(1, type='n', xlab='t in seconds', ylab='x(t) for Fc=0', xlim=c(0,1000), ylim=c(-2,2), lty=1, lwd=1)
+lines(x=seq(delta_t,t_finish,by=delta_t), y=x[1,], col=4)
+```
+Histograms:
+
+```{r}
+hist(sample(x, 5000))
+hist(sample(x_f1, 5000))
+hist(sample(x_f2, 5000))
+hist(sample(x_f3, 5000))
+```
+
+## 5. Calculate the mean residence time of the R state as a function of the force tR(FC)
+
+```{r}
+t <- 0
+res_t_max1 <- NULL
+  
+for (i in 2:N_steps) {
+  if (x_f1[1, i] > 0) {
+    t <- t + 1
+  } else {
+    t <- 0
+  }
+  res_t_max1 <- cbind(res_t_max1, t * 0.01)
+}
+
+res_t_max2 <- NULL
+  
+for (i in 2:N_steps) {
+  if (x_f2[1, i] > 0) {
+    t <- t + 1
+  } else {
+    t <- 0
+  }
+  res_t_max2 <- cbind(res_t_max2, t * 0.01)
+}
+
+res_t_max3 <- NULL
+  
+for (i in 2:N_steps) {
+  if (x_f3[1, i] > 0) {
+    t <- t + 1
+  } else {
+    t <- 0
+  }
+  res_t_max3 <- cbind(res_t_max3, t * 0.01)
+}
+
+```
+
+```{r}
+plot(x=c(0.1,0.2,0.5), y=c(mean(res_t_max1[res_t_max1!=0]),mean(res_t_max2[res_t_max2!=0]), mean(res_t_max3[res_t_max3!=0])), xlab='Fc' , ylab='residence time')
+```
+
+## 6. Plot the probability to find the particle at the right hand side of the potential (nR/N) as a
+function of the applied force F = [0.2, 2] – steps 0.2. Which kind of function does appear?
+
+```{r}
+potential <- function(x, B, F_c) {
+  return(B * (((x^2) - 1)^2) - F_c * x)
+}
+
+force_potential <- function(x, B, F_c) {
+  return(-4 * B * x * (x^2 - 1) + F_c)
+}
+
+gamma_vec <- c(0.1, 1, 10.0)
+B_vec <- c(0.1, 1, 1.5)
+F_c <- seq(0.2,2,by=0.2)
+mass <- 1.0
+kbT <- 1.0
+
+delta_t <- 0.01
+t_finish <- 1000
+
+N_steps <- as.integer(t_finish / delta_t)
+
+index_gamma <- 2
+index_B <- 2
+
+x_f <- matrix(0, nrow = length(F_c), ncol = N_steps)
+v_f <- matrix(0, nrow = length(F_c), ncol = N_steps)
+
+for (i in 1:length(F_c)) {
+  
+  B_gj <- 1 / (1 + gamma_vec[index_gamma] * delta_t / (2 * mass))
+  A_gj <- B_gj * (1 - gamma_vec[index_gamma] * delta_t / (2 * mass))
+  stoch <- sqrt(2 * gamma_vec[index_gamma] * kbT * delta_t)
+  
+  v_f[i,1] <- runif(1) - 0.5
+  x_f[i,1] <- sample(c(-1, 1), size = 1, replace = TRUE)
+  
+  for (index_step in 2:N_steps) {
+    
+    W <- stoch * rnorm(1)
+    
+    x_f[i, index_step] <- x_f[i, index_step - 1] + B_gj * delta_t * v_f[i, index_step - 1] + (B_gj * delta_t * delta_t / (2 * mass)) * force_potential(x_f[i, index_step - 1], B_vec[index_B], F_c[i]) + (B_gj * delta_t / (2 * mass)) * W
+    
+    v_f[i, index_step] <- A_gj * v_f[i, index_step - 1] + (delta_t / (2 * mass)) * (A_gj * force_potential(x_f[i, index_step - 1], B_vec[index_B], F_c[i]) + force_potential(x_f[i, index_step], B_vec[index_B], F_c[i])) + (B_gj / mass) * W
+  }
+}
+```
+
+```{r}
+
+p_f <- c()
+for (i in 1:length(F_c)){
+ p_f[i]<-length(x_f[i,x_f[i,]>0])/length(x_f[i,])
+}
+```
+```{r}
+summary(lm(p_f~log(F_c)))
+a<-lm(p_f~log(F_c))$coefficients[1] 
+b<- lm(p_f~log(F_c))$coefficients[2] 
+
+plot(x=F_c, y=p_f)
+lines(x=F_c, y=log(F_c)*b+a)
+```
+The result can be approached to a logarithmic function.
+
+## 7. Estimate the position of the barrier ($x_M$) in the Bell Approximation.
+
+$F(x) = −4Bx(x^2 −1) + F_C$ The x where force is maxima will be our estimated $x_M$:
+
+```{r}
+Force <- function(x, F_c){
+  return (-4*x*(x**2 - 1)- F_c)
+}
+
+plot(1, type='n', xlab='x', ylab='F(x)', xlim=c(-1.5,1.5), ylim=c(-5,5))
+rect(par("usr")[1], par("usr")[3],par("usr")[2], par("usr")[4],col = "#ebebeb")
+for (i in 1:length(F_c)){
+lines(x=x_f[i,], y=Force(x=x_f[i,],F_c[i]), col=i)
+}
+grid(nx = 64, ny = NA, lty = 2, col = "white", lwd = 1)
+legend(1,4,legend=seq(0.2,2,by=0.2), lty=1, col=seq(1,length(F_c)),cex=0.8, title='F_c')
+abline(v=0.575)
+```
+The estimate pposition of $x_M$ is 0.575.
+
+

@@ -1,0 +1,218 @@
+---
+title: "Practice week 3 Modeling"
+output: 
+  html_document:
+    toc: true
+  pdf_document: true
+date: "2024-02-19"
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Exercise 1
+
+```{r}
+N <- c(26, 46, 1500)
+sigma = c(exp(-8.8*0.5), exp(-8.8), exp(-8.8*1.5))
+s_steps = 0.01
+s1 = seq(0, 3, by=s_steps)
+
+eigenbig <- function(s, sigma){
+  a=0.5*(s+1+sqrt((s-1)^2+4*s*sigma))
+  return(a)
+}
+
+eigensmall <- function(s, sigma){
+  a=0.5*(s+1-sqrt((s-1)^2+4*s*sigma))
+  return(a)
+}
+
+der_eigenbig_s <- function(s, sigma){
+  a=0.5*(1+(s-1+2*sigma)/sqrt((s-1)^2+4*s*sigma))
+  return(a)
+}
+
+der_eigensmall_s <- function(s, sigma){
+  a=0.5*(1-(s-1+2*sigma)/sqrt((s-1)^2+4*s*sigma))
+  return(a) 
+}
+
+helfrac <- function(s, sigma, N){
+   
+    l_big <- eigenbig(s, sigma)
+    l_small <- eigensmall(s,sigma)
+    dl_ds_big <- der_eigenbig_s(s, sigma)
+    dl_ds_small <- der_eigensmall_s(s, sigma)
+    
+    A_small <- (l_small/l_big)**N*((1-l_big)*(-N*l_small+(N+1)*l_big)*dl_ds_small+(l_small-1)*l_small*dl_ds_big)
+    A_big <- (1-l_small)*(-N*l_big+(N+1)*l_small)*dl_ds_big+(l_big-1)*l_big*dl_ds_small
+    B <- l_big*(l_small-l_big)*((l_small/l_big)**(N+1)*(l_big-1)-(l_small-1))
+    
+    theta <- (s/N)*(A_small+A_big)/B
+    return(theta)
+}
+```
+
+### 1.a) For a given value of s and $\sigma$ you can see differences in the value of $\theta$, the corresponding helical fraction for different values of N. Can you explain such behavior?
+
+```{r, warning=FALSE}
+
+for(i in 1:length(sigma)){
+plot(s1,helfrac(s=s1,sigma=sigma[i],N), ylab ='Helical fraction', xlab = 's')
+lines(s1,helfrac(s=s1,sigma=sigma[i],N=N[1]), col='green')
+lines(s1,helfrac(s=s1,sigma=sigma[i],N=N[2]), col='red')  
+lines(s1,helfrac(s=s1, sigma=sigma[i],N=N[3]), col='blue')
+legend(2, 0.6, legend=c(N[1],N[2],N[3]), col=c("green","red", "blue"),lty=c(1,1), cex=1, title='N')
+title(paste(c('Heical fraction vs. s for sigma =', format(sigma[i],scientific = TRUE)), collapse = " "))
+}
+```
+
+Helical fraction increases with s for higher number of residues (N). Knowing that $s=e^{-\epsilon/k_BT}$ where this s increases exponentially with the free energy $\epsilon$ given by each residue, $\epsilon=\Delta E_b -T\Delta S_{tot}$ where the increase in energy $\Delta E_b$ will be the one from the H-bond interactions within the helix and between the solvent and the protein, and entropy will depend on the solvent and a configuration term.
+
+As helical fraction can be defined as $\theta=\frac{1}{NZ_N}\sum_{m_j=0,1}(\sum_{j=1}^{N} m_j)e^{-\beta\sum_{i}^{N}(\epsilon m_1+\gamma m_i(1-m_{i-1}))}$ that can be written as follows:
+
+$\theta=\frac{1}{N}\frac{\sum_{m_j=0,1}(\sum_{j=1}^{N} m_j) e^{-\beta\sum_{i}^{N}(\epsilon m_{i-1}+\gamma m_i(1-m_{i-1}))}}{\sum_{m_j=0,1}e^{-\beta\sum_{i}^{N}(\epsilon m_im_{i-1}+(\gamma + \epsilon)m_i(1-m_{i-1}))}}$ $=>$ $\theta=\frac{1}{N}(\sum_{j=1}^{N} m_j)e^{\sum_{i}^{N}(m_{i-1}+1)\epsilon m_i}$
+
+For a high number of residues the helical fraction will be higher as the interactions within the protein are easier to achieve. The higher the number of residues the more they will contribute to the total free energy term, also, as the entropy gets lower in a higher amount by the presence of more residues, we will have then an achieved lower value of s in the same conditions. The larger the number of contributions to $m_j$ and $m_i$ the higher will be $\theta$ that grows exponentially with these values so we can consider the number of residues N in the denominator a minor contributor to the helical fraction.
+
+### 1.b) Discuss the role of σ in determining θ, at a given s and fixed N. You can also refer to the infinite N limit discussed in class.
+
+```{r, warning=FALSE}
+for(i in 1:length(N)){
+plot(s1,helfrac(s=s1,sigma=sigma,N[i]), ylab ='Helical fraction', xlab = 's')
+lines(s1,helfrac(s=s1,sigma=sigma[1],N=N[i]), col='green')
+lines(s1,helfrac(s=s1,sigma=sigma[2],N=N[i]), col='red')  
+lines(s1,helfrac(s=s1,sigma=sigma[3],N=N[i]), col='blue')
+legend(1.65, 0.6, legend=(format(c(sigma[1],sigma[2],sigma[3]),scientific = TRUE)), col=c("green","red", "blue"),lty=c(1,1), cex=1, title='sigma')
+title(paste(c('Helical fraction vs. s for N =',N[i]), collapse = " "))
+}
+```
+
+In the large N limit, considering that $s \approx 1$, $\sigma \approx10^{-3}$, we have that $\lambda_+>1$ and $\lambda_-<1$ and $Z_N$ is approximated to $\lambda_+^N$ and therefore $\theta=\frac{s}{N}\cdot \frac{\partial log(Z)}{\partial s}$ $=>$ $\theta = \frac{s}{N}\cdot \frac{N \partial log(\lambda_+)}{\partial s}$. This approximation drives to the following formula if we use the iterative method:
+
+$\theta=\frac{1}{2}(1+\frac{(s-1)}{\sqrt{(s-1)^2+4s\sigma}})$
+
+The parameter $\sigma$ if low enough will cause to rise the helical fraction abruptly in s=1 so the fraction in the formula will be nearer to 1 and helical fraction will represent the total of the protein. The lower is $\sigma$ the more abrupt will be this transition to the helix for each value of s. Since $\sigma$ grows exponentially with the energetic cost of starting an helix, the lower is this cost the higher will the helical fraction will grow with s.
+
+## Exercise 2
+
+```{r, warning=FALSE}
+T_ = seq(273,330,by=0.1)
+T_e = 0.78
+T_m = 285
+s_T <- exp(-(T_e*298/(T_))*(1-(T_/T_m)))
+
+helfracT <- function(s=s_T, sigma, N){
+   
+    l_big <- eigenbig(s, sigma)
+    l_small <- eigensmall(s,sigma)
+    dl_ds_big <- der_eigenbig_s(s, sigma)
+    dl_ds_small <- der_eigensmall_s(s, sigma)
+    
+    A_small <- (l_small/l_big)**N*((1-l_big)*(-N*l_small+(N+1)*l_big)*dl_ds_small+(l_small-1)*l_small*dl_ds_big)
+    A_big <- (1-l_small)*(-N*l_big+(N+1)*l_small)*dl_ds_big+(l_big-1)*l_big*dl_ds_small
+    B <- l_big*(l_small-l_big)*((l_small/l_big)**(N+1)*(l_big-1)-(l_small-1))
+    
+    theta <- (s/N)*(A_small+A_big)/B
+    return(theta)
+}
+
+plot(T_,helfracT(sigma=sigma[2],N=N), ylab ='Helical fraction', xlab = 'T')
+lines(T_,helfracT(sigma=sigma[2],N=N[1]),col='green')
+lines(T_,helfracT(sigma=sigma[2],N=N[2]),col='red')
+lines(T_,helfracT(sigma=sigma[2],N=N[3]),col='blue')
+legend(310, 0.8, legend=c(N[1],N[2],N[3]), col=c("green","red", "blue"),lty=c(1,1), cex=1, title='N')
+title(paste(c('Heical fraction vs. T for sigma =', format(sigma[2],scientific = TRUE)), collapse = " "))
+
+```
+
+### 2.a) The data, related to the figure in the lecture notes, correspond to the case of an artificial polypeptide in a mixture of dichloroacetic acid and ethylene dichloride. Discuss the sign of $ΔE_b$ and $ΔS_{tot}$ in that case, and how should you change the energy and/or the entropy parameters in order to reproduce the natural protein behavior in water, of being helical at low temperature, instead of high.
+
+Knowing that both the entropy and the H-bond formation energy are related with the nature of the solvent and conditioned to the H-bond formation in the solvent(entropy) and for protein-protein and solvent-protein interactions (enthalpy/energy) we can asses the helix-coil transition changes. For water, entropy difference is positive (water has a lot of H-bonds that shape its structure as highly ordered) whereas for this mixture is negative. For protein-solvent interactions the chances of H-bond formation for these two kinds of molecules are higher and so are within the protein H-bonds will contribute  with a lower value in energy being facilitated by more similarty between solvent and protein in terms of polarity. 
+
+Being s, $s=e^{-\epsilon/k_BT}$ and $\epsilon=\Delta E_b -T\Delta S_{tot}$ we can estimate and change behavioral changes of the protein with the followng expression approximating s and sigma taking account of the value of the concentrations 1 and 2 (dichloracetic acid and ethylene dichloride):
+$\theta=(C_1+C_2\frac{(s-1)}{\sqrt{(s-1)^2+4s\sigma}})$
+
+## Exercise 3
+
+### 3.a) Adapt the code to calculate $N_h$ as a function of s and of T, as you did for θ before. Plot the analogous figures as for θ before
+
+```{r, warning=FALSE}
+
+der_eigenbig_sig <- function(s, sigma){
+  a=(s/sqrt((s-1)^2+4*s*sigma))
+  return(a)
+}
+
+der_eigensmall_sig <- function(s, sigma){
+  a=-(s/sqrt((s-1)^2+4*s*sigma))
+  return(a) 
+}
+
+N_h <- function(s, sigma, N){
+   
+    l_big <- eigenbig(s, sigma)
+    l_small <- eigensmall(s,sigma)
+    dl_dsig_big <- der_eigenbig_sig(s, sigma)
+    dl_dsig_small <- der_eigensmall_sig(s, sigma)
+    
+    A_small <- (l_small/l_big)**N*((1-l_big)*(-N*l_small+(N+1)*l_big)*dl_dsig_small+(l_small-1)*l_small*dl_dsig_big)
+    A_big <- (1-l_small)*(-N*l_big+(N+1)*l_small)*dl_dsig_big+(l_big-1)*l_big*dl_dsig_small
+    B <- l_big*(l_small-l_big)*((l_small/l_big)**(N+1)*(l_big-1)-(l_small-1))
+    
+    Nh <- ((sigma)*(A_small+A_big)/B)/N
+    return(Nh)
+}
+
+for(i in 1:3){
+plot(s1,N_h(s=s1,sigma[1:3],N[i]), ylab ='Nh', xlab = 's')
+lines(s1,N_h(s=s1,sigma=sigma[1],N=N[i]), col='green')
+lines(s1,N_h(s=s1,sigma=sigma[2],N=N[i]), col='red')
+lines(s1,N_h(s=s1,sigma=sigma[3],N=N[i]), col='blue')
+legend(2, 0.03, legend=(format(c(sigma[1],sigma[2],sigma[3]),scientific = TRUE)), col=c("green","red", "blue"),lty=c(1,1), cex=0.8, title='sigma')
+title(paste(c('Nh vs. s for N =',N[i]), collapse = " "))
+}
+
+```
+
+```{r, warning=FALSE}
+for(i in 1:3){
+plot(s1,N_h(s=s1,sigma=sigma[i],N=N[1:3]), ylab ='Nh', xlab = 's')
+lines(s1,N_h(s=s1,sigma=sigma[i],N=N[1]), col='green')
+lines(s1,N_h(s=s1,sigma=sigma[i],N=N[2]), col='red')
+lines(s1,N_h(s=s1,sigma=sigma[i],N=N[3]), col='blue')
+legend(2, 0.03, legend=c(N[1],N[2],N[3]), col=c("green","red","blue"),lty=c(1,1), cex=0.8, title='N')
+title(paste(c('Nh vs. s for sigma =', format(sigma[1],scientific = TRUE)), collapse = " "))
+}
+
+```
+
+```{r, warning=FALSE}
+
+for(i in 1:3){
+plot(T_,N_h(s=s_T,sigma=sigma[i],N[1:3]), ylab ='Nh', xlab = 'T')
+lines(T_,N_h(s=s_T,sigma=sigma[i],N=N[1]), col='green')
+lines(T_,N_h(s=s_T,sigma=sigma[i],N=N[2]), col='red') 
+lines(T_,N_h(s=s_T, sigma=sigma[i],N=N[3]), col='blue')
+title(paste(c('Nh vs. T for sigma =', format(sigma[i],scientific = TRUE)), collapse = " "))
+legend(310, 0.05, legend=c(N[1],N[2],N[3]), col=c("green","red", "blue"),lty=c(1,1), cex=1, title='N')
+}
+
+```
+
+```{r, warning=FALSE}
+for(i in 1:3){
+plot(T_,N_h(s=s_T,sigma=sigma,N[i]), ylab ='Nh', xlab = 'T')
+lines(T_,N_h(s=s_T,sigma=sigma[1],N=N[i]), col='green')
+lines(T_,N_h(s=s_T,sigma=sigma[2],N=N[i]), col='red') 
+lines(T_,N_h(s=s_T,sigma=sigma[3],N=N[i]), col='blue')
+title(paste(c('Nh vs. T for sigma =', format(sigma[i],scientific = TRUE)), collapse = " "))
+legend(310, 0.04, legend=c(N[1],N[2],N[3]), col=c("green","red", "blue"),lty=c(1,1), cex=1, title='N')
+}
+```
+
+### 3.b) How can you explain the behavior of Nh as a function of s? How do you interpret its behavior at low and high s, and for s close to 1?
+
+For $\frac{\partial \lambda}{\partial\sigma} =\frac{s}{\sqrt{(s-1)^2+4s\sigma}}$, at high s we will have higher values of lambda and also for low ones lambda values are lower, labda values will be related directly to Nh values. For the case of s=1 lambda values start to grow significantly and so does Nh.
