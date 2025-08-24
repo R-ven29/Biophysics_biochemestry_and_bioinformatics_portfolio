@@ -3,7 +3,7 @@ In this repository I'll be including projects related to biophysics, biochemistr
   * [**Biological systems modeling**](https://github.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/tree/main/Biological%20systems%20modeling) 
   * [**NGS RNA-seq data analysis**](https://github.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/tree/main/NGS%20RNA-seq%20data%20analysis) with R package Bioconductor 
   * A **protein mining** project with Biopython ([Master's dissertation](https://github.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/tree/main/Master's%20Dissertation))
-  * A drug discovery project with **Molecular docking and activity assays**
+  * A [drug discovery project](https://github.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/blob/main/Molecular_docking_activity_assays.pdf) with **Molecular docking and activity assays**
   * Systems biology projects **modeling intracellular processes**
   * **Instrumental techniques** data analysis involving:
       * Spectroscopy
