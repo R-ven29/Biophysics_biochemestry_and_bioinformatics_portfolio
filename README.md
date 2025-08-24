@@ -10,15 +10,7 @@ In this repository I'll be including projects related to biophysics, biochemistr
       * Cellular nuclei marking and visualization
       * Small-molecules screening
       * Organic synthesis (Final degree project)
-  
- ## Projects Overview
 
-- [Biological systems modeling](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/Biological_systems_modeling/index.html)
-- [RNA-seq analysis](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/RNAseq_analysis/index.html)
-- [Protein mining](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Protein_mining/index.html)
-- [Drug discovery](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Drug_discovery/index.html)
-- [Systems biology](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Systems_biology/index.html)
-- [Instrumental techniques](https://raw.githubusercontent.com/R-ven29/Biophysics_biochemestry_and_bioinformatics_portfolio/main/Instrumental_techniques/index.html)
 
 
   
